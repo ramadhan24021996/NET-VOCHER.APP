@@ -1,0 +1,73 @@
+{
+  "mikrotik": {
+    "ip": "100.100.10.1",
+    "user": "rama",
+    "pass": "rama1234"
+  },
+  "runchise": {
+    "apiKey": "",
+    "webhook": "https://api.netvocher.com/v1/webhook"
+  },
+  "infrastructure": {
+    "accessPoints": [
+      {
+        "name": "accespoint 1",
+        "ip": "100.100.20.30",
+        "port": "ether10",
+        "type": "",
+        "id": 1772570933198
+      }
+    ]
+  },
+  "vouchers": [
+    {
+      "code": "MAN-72153",
+      "pack": "1 Hour",
+      "price": "Rp 2.000",
+      "date": "4/3/2026, 13.55.45",
+      "status": "Active",
+      "magicLink": "http://100.100.10.1/login?username=MAN-72153",
+      "details": {
+        "customer": "Manual Generation",
+        "orderNo": "MANUAL"
+      }
+    },
+    {
+      "code": "MAN-89102",
+      "pack": "1 Hour",
+      "price": "Rp 2.000",
+      "date": "4/3/2026, 13.55.26",
+      "status": "Active",
+      "magicLink": "http://100.100.10.1/login?username=MAN-89102",
+      "details": {
+        "customer": "Manual Generation",
+        "orderNo": "MANUAL"
+      }
+    },
+    {
+      "code": "MAN-34705",
+      "pack": "1 Hour",
+      "price": "Rp 2.000",
+      "date": "4/3/2026, 13.53.10",
+      "status": "Active",
+      "magicLink": "http://100.100.10.1/login?username=MAN-34705",
+      "details": {
+        "customer": "Manual Generation",
+        "orderNo": "MANUAL"
+      }
+    },
+    {
+      "code": "MAN-63600",
+      "pack": "1 Hour",
+      "price": "Rp 2.000",
+      "date": "4/3/2026, 13.39.29",
+      "status": "Active",
+      "magicLink": "http://100.100.10.1/login?username=MAN-63600",
+      "details": {
+        "customer": "Manual Generation",
+        "orderNo": "MANUAL"
+      }
+    }
+  ],
+  "notifications": []
+}
