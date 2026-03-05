@@ -166,16 +166,31 @@ export default function DashboardConcept3() {
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      await axios.post(`http://${window.location.hostname}:3001/api/sync`);
+      const res = await axios.post(`http://${window.location.hostname}:3001/api/sync`);
       setLastSync(new Date().toLocaleTimeString());
+      if (res.data.success) {
+        alert(`✅ ${res.data.message}`);
+        // Refresh all dashboard data after successful sync
+        fetchAllData(true);
+      } else {
+        alert(`⚠️ ${res.data.message}`);
+      }
+    } catch (err) {
+      alert('❌ Gagal melakukan sinkronisasi. Pastikan server backend dan MikroTik terhubung.');
     } finally {
       setIsSyncing(false);
     }
   };
 
   const handleExport = () => {
-    alert('Generating report export... The download will start shortly.');
-    // In real app: window.location.href = `http://${window.location.hostname}:3001/api/export`;
+    const exportUrl = `http://${window.location.hostname}:3001/api/export?filterDate=${filterDate}`;
+    // Create a temporary link and click it to trigger download
+    const link = document.createElement('a');
+    link.href = exportUrl;
+    link.setAttribute('download', `NetVocher_Report_${filterDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleSaveMikroTik = async () => {
@@ -330,7 +345,11 @@ export default function DashboardConcept3() {
       alert('Pilih setidaknya satu voucher untuk diprint.');
       return;
     }
-    window.print();
+    // Close the modal first, then trigger print after a brief delay
+    setShowPrintModal(false);
+    setTimeout(() => {
+      window.print();
+    }, 300);
   };
 
   const handleSaveInfra = async (newConfig) => {
@@ -642,11 +661,11 @@ export default function DashboardConcept3() {
       }} />
 
       {/* TOP NAVBAR */}
-      <header className="sticky top-0 z-40">
+      <header className="fixed top-0 left-0 right-0 z-50">
         {/* Animated Gradient Accent */}
-        <div className="h-[2px] bg-gradient-to-r from-blue-600 via-cyan-400 to-indigo-600 shadow-[0_0_10px_rgba(37,99,235,0.4)]"></div>
+        <div className="h-[2px] bg-gradient-to-r from-blue-500 via-cyan-400 to-indigo-500 shadow-[0_0_15px_rgba(56,189,248,0.5)]"></div>
 
-        <div className="bg-[#0D1526]/80 backdrop-blur-3xl border-b border-white/[0.05]">
+        <div className="bg-[#070D1A]/70 backdrop-blur-3xl border-b border-[#26314A]/60 shadow-2xl px-6 py-2">
           {isOffline && (
             <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-1.5 flex items-center justify-center gap-2 animate-pulse">
               <AlertTriangle size={12} className="text-red-500" />
@@ -654,34 +673,34 @@ export default function DashboardConcept3() {
             </div>
           )}
 
-          <div className="max-w-[1500px] mx-auto flex items-center justify-between px-5 md:px-8 py-3">
+          <div className="max-w-[1500px] mx-auto flex items-center justify-between">
             {/* Logo Section */}
             <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setActiveTab('Overview')}>
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-xl shadow-blue-500/20 ring-1 ring-white/10 group-hover:scale-105 transition-transform duration-300">
                 <Wifi size={20} className="text-white" />
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-white font-black tracking-tight text-base leading-none">NetVocher</h1>
-                <p className="text-[8px] text-blue-400/70 font-bold uppercase tracking-[0.3em] mt-0.5">Control Center</p>
+                <h1 className="text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 font-black tracking-tight text-base leading-none drop-shadow-sm">NetVocher</h1>
+                <p className="text-[8px] text-blue-400 font-bold uppercase tracking-[0.3em] mt-0.5 tracking-widest">Control Center</p>
               </div>
             </div>
 
             {/* Desktop Navigation (Segmented Control style) */}
-            <nav className="hidden md:flex items-center gap-1 bg-black/30 border border-white/[0.06] rounded-2xl p-1.5 backdrop-blur-md">
+            <nav className="hidden md:flex items-center gap-1 bg-[#0A111E]/80 border border-[#26314A]/50 rounded-2xl p-1.5 backdrop-blur-xl shadow-inner">
               {navItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black transition-all duration-300 ${activeTab === item.id
+                  className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black transition-all duration-300 group ${activeTab === item.id
                     ? 'text-white'
-                    : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
+                    : 'text-slate-500 hover:text-white hover:bg-[#1A233A]/60'
                     }`}
                 >
                   {activeTab === item.id && (
-                    <div className="absolute inset-0 bg-gradient-to-tr from-blue-600/80 to-indigo-600/80 rounded-xl shadow-lg shadow-blue-600/20 z-0"></div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl shadow-lg shadow-blue-500/30 ring-1 ring-white/10 z-0"></div>
                   )}
                   <span className="relative z-10 flex items-center gap-2">
-                    <item.icon size={14} className={activeTab === item.id ? 'text-white' : 'text-slate-600 group-hover:text-slate-400'} />
+                    <item.icon size={14} className={activeTab === item.id ? 'text-white drop-shadow-md' : 'text-slate-500 group-hover:text-blue-400 transition-colors'} />
                     <span className="hidden lg:inline uppercase tracking-widest">{item.label}</span>
                   </span>
                 </button>
@@ -693,15 +712,15 @@ export default function DashboardConcept3() {
               {/* Status & Date (Grouped) */}
               <div className="hidden lg:flex items-center gap-3 pr-4 border-r border-white/[0.08]">
                 {/* Connection Dots */}
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-black/20 border border-white/[0.05] rounded-xl">
-                  <div className={`w-1.5 h-1.5 rounded-full ${testResults.mikrotik === 'success' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-red-500'} animate-pulse`}></div>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Live</span>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#151D2F]/80 border border-[#26314A]/60 rounded-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+                  <div className={`w-1.5 h-1.5 rounded-full ${testResults.mikrotik === 'success' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]'} animate-pulse`}></div>
+                  <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Live</span>
                 </div>
 
                 {/* Date Picker */}
-                <div className="relative group">
-                  <div className="flex items-center gap-2 bg-black/20 border border-white/[0.05] hover:border-blue-500/30 px-3 py-1.5 rounded-xl transition-all">
-                    <Calendar size={13} className="text-blue-400" />
+                <div className="relative group/date">
+                  <div className="flex items-center gap-2 bg-[#151D2F]/80 border border-[#26314A]/60 hover:border-blue-500/50 hover:bg-[#1A233A]/80 px-3 py-1.5 rounded-xl transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] cursor-pointer">
+                    <Calendar size={13} className="text-blue-400 group-hover/date:text-blue-300 transition-colors" />
                     <input
                       type="date"
                       value={filterDate}
@@ -718,9 +737,9 @@ export default function DashboardConcept3() {
                 <div className="relative">
                   <button
                     onClick={() => { setShowNotifs(!showNotifs); setShowProfile(false); }}
-                    className={`p-2.5 rounded-xl border border-white/[0.06] transition-all active:scale-95 group relative ${showNotifs ? 'bg-blue-600/20 border-blue-500/30' : 'bg-black/20 hover:bg-white/5'}`}
+                    className={`p-2.5 rounded-xl border transition-all active:scale-95 group relative shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${showNotifs ? 'bg-blue-600/20 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.15)]' : 'bg-[#151D2F]/80 border-[#26314A]/60 hover:border-[#26314A] hover:bg-[#1A233A]'}`}
                   >
-                    <Bell size={16} className={showNotifs ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'} />
+                    <Bell size={16} className={showNotifs ? 'text-blue-400' : 'text-slate-400 group-hover:text-white transition-colors'} />
                     {notifList.length > 0 && (
                       <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-[#151D2F]"></span>
                     )}
@@ -754,7 +773,7 @@ export default function DashboardConcept3() {
                 <div className="relative">
                   <button
                     onClick={() => { setShowProfile(!showProfile); setShowNotifs(false); }}
-                    className={`flex items-center gap-2 p-1 rounded-2xl border border-white/[0.06] transition-all active:scale-95 group ${showProfile ? 'bg-blue-600/20 border-blue-500/30' : 'bg-black/20 hover:bg-white/5'}`}
+                    className={`flex items-center gap-2 p-1 rounded-2xl border transition-all active:scale-95 group shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${showProfile ? 'bg-blue-600/10 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.1)]' : 'bg-[#151D2F]/80 border-[#26314A]/60 hover:border-[#26314A] hover:bg-[#1A233A]'}`}
                   >
                     <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg ring-1 ring-white/10 group-hover:shadow-blue-500/20">
                       <span className="text-white text-[10px] font-black">AD</span>
@@ -835,7 +854,7 @@ export default function DashboardConcept3() {
       </header>
 
       {/* MAIN CONTENT */}
-      <div className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden relative">
+      <div className="flex-1 flex flex-col pt-[72px] overflow-y-auto overflow-x-hidden relative">
         <div className="p-5 lg:p-7 max-w-[1400px] w-full mx-auto">
 
 
@@ -1021,7 +1040,7 @@ export default function DashboardConcept3() {
                             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Vouchers</span>
                           </h2>
                         </div>
-                        <button className="p-1.5 hover:bg-white/5 rounded-lg transition-colors">
+                        <button onClick={() => setActiveTab('Vouchers')} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors" title="Lihat Detail Vouchers">
                           <MoreHorizontal size={14} className="text-slate-600" />
                         </button>
                       </div>
@@ -1176,10 +1195,10 @@ export default function DashboardConcept3() {
                     <h3 className="text-base font-medium text-white mb-2">Peak Hours</h3>
                     <div className="h-[250px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={Array.from({ length: 24 }, (_, i) => ({ hour: i.toString().padStart(2, '0'), users: 0 }))}>
+                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={Array.from({ length: 24 }, (_, i) => ({ hour: i.toString().padStart(2, '0'), users: (stats?.peakHours || [])[i] || 0 }))}>
                           <PolarGrid stroke="#26314A" />
                           <PolarAngleAxis dataKey="hour" tick={{ fill: '#64748b', fontSize: 10 }} />
-                          <PolarRadiusAxis angle={30} domain={[0, 50]} tick={false} axisLine={false} />
+                          <PolarRadiusAxis angle={30} domain={[0, Math.max(...(stats?.peakHours || [1]), 5)]} tick={false} axisLine={false} />
                           <Radar name="Users" dataKey="users" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} strokeWidth={2} />
                           <Tooltip contentStyle={{ backgroundColor: '#1A233A', borderColor: '#26314A', borderRadius: '8px', fontSize: '12px' }} />
                         </RadarChart>
@@ -1231,37 +1250,66 @@ export default function DashboardConcept3() {
                       <span className="text-[10px] text-slate-500 font-bold uppercase">Last 24 hours</span>
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 w-24">CPU usage</span>
-                        <div className="flex-1 h-8">
+                    <div className="space-y-6">
+                      {/* CPU USAGE */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-end">
+                          <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">CPU usage</span>
+                          <span className="text-xs font-black text-blue-400">{(stats?.system?.cpu?.slice(-1)[0] || 0)}%</span>
+                        </div>
+                        <div className="h-12 w-full">
                           <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={(stats?.system?.cpu || []).map((v, i) => ({ n: i, v }))}>
-                              <YAxis domain={[0, 100]} hide={true} />
-                              <Line type="monotone" dataKey="v" stroke="#3b82f6" strokeWidth={2} dot={false} isAnimationActive={false} />
-                            </LineChart>
+                            <AreaChart data={(stats?.system?.cpu || [0, 0, 0, 0, 0]).map((v, i) => ({ n: i, v }))}>
+                              <defs>
+                                <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <Area type="monotone" dataKey="v" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorCpu)" isAnimationActive={true} />
+                            </AreaChart>
                           </ResponsiveContainer>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 w-24">RAM usage</span>
-                        <div className="flex-1 h-8">
+
+                      {/* RAM USAGE */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-end">
+                          <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">RAM usage</span>
+                          <span className="text-xs font-black text-emerald-400">{(stats?.system?.ram?.slice(-1)[0] || 0)}%</span>
+                        </div>
+                        <div className="h-12 w-full">
                           <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={(stats?.system?.ram || []).map((v, i) => ({ n: i, v }))}>
-                              <YAxis domain={[0, 100]} hide={true} />
-                              <Line type="monotone" dataKey="v" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
-                            </LineChart>
+                            <AreaChart data={(stats?.system?.ram || [0, 0, 0, 0, 0]).map((v, i) => ({ n: i, v }))}>
+                              <defs>
+                                <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <Area type="monotone" dataKey="v" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorRam)" isAnimationActive={true} />
+                            </AreaChart>
                           </ResponsiveContainer>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 w-24">Connections</span>
-                        <div className="flex-1 h-8">
+
+                      {/* CONNECTIONS */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-end">
+                          <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">Connections</span>
+                          <span className="text-xs font-black text-indigo-400">{(stats?.system?.connections?.slice(-1)[0] || 0)} Active</span>
+                        </div>
+                        <div className="h-12 w-full">
                           <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={(stats?.system?.connections || []).map((v, i) => ({ n: i, v }))}>
-                              <YAxis domain={[0, 'dataMax + 10']} hide={true} />
-                              <Line type="monotone" dataKey="v" stroke="#6366f1" strokeWidth={2} dot={false} isAnimationActive={false} />
-                            </LineChart>
+                            <AreaChart data={(stats?.system?.connections || [0, 0, 0, 0, 0]).map((v, i) => ({ n: i, v }))}>
+                              <defs>
+                                <linearGradient id="colorConn" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <Area type="monotone" dataKey="v" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#colorConn)" isAnimationActive={true} />
+                            </AreaChart>
                           </ResponsiveContainer>
                         </div>
                       </div>
@@ -1516,106 +1564,6 @@ export default function DashboardConcept3() {
                         <button className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl transition-all active:scale-95">
                           Download
                         </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* GENERATE NEW VOUCHER MODAL */}
-              {showGenerateModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" onClick={() => setShowGenerateModal(false)}>
-                  <div className="bg-[#151D2F] border border-[#26314A] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()}>
-                    <div className="p-8 border-b border-[#26314A] bg-[#1A233A]/50 flex justify-between items-center">
-                      <div>
-                        <h3 className="text-2xl font-black text-white tracking-tight">Generate Voucher</h3>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Manual Hotspot Creation</p>
-                      </div>
-                      <button onClick={() => setShowGenerateModal(false)} className="text-slate-500 hover:text-white transition-colors">
-                        <XCircle size={24} />
-                      </button>
-                    </div>
-
-                    <div className="p-8 space-y-8">
-                      {/* Package Selection */}
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Pilih Paket Durasi</label>
-                        <div className="grid grid-cols-3 gap-3">
-                          {['1 Hour', '1 Day', '1 Week'].map((p) => (
-                            <button
-                              key={p}
-                              onClick={() => setGenPack(p)}
-                              className={`py-4 rounded-2xl border-2 transition-all font-bold text-sm ${genPack === p
-                                ? 'bg-blue-600/10 border-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.2)]'
-                                : 'bg-[#0B1320] border-[#26314A] text-slate-500 hover:border-slate-700'
-                                }`}
-                            >
-                              {p}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Shared Users */}
-                      <div>
-                        <div className="flex justify-between items-center mb-4">
-                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Shared Users (Limit Device)</label>
-                          <span className="bg-blue-500/10 text-blue-400 text-xs font-black px-2 py-1 rounded-md">{genShared} Devices</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="1"
-                          max="10"
-                          step="1"
-                          value={genShared}
-                          onChange={(e) => setGenShared(e.target.value)}
-                          className="w-full h-2 bg-[#0B1320] rounded-lg appearance-none cursor-pointer accent-blue-500 border border-[#26314A]"
-                        />
-                        <div className="flex justify-between text-[10px] text-slate-600 font-bold mt-2 px-1">
-                          <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
-                        </div>
-                      </div>
-
-                      {/* Rate Limit Selection */}
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Limit Kecepatan (Upload/Download)</label>
-                        <div className="grid grid-cols-2 gap-3">
-                          {[
-                            { label: 'Hemat (1 Mbps)', val: '1M/1M' },
-                            { label: 'Standar (3 Mbps)', val: '3M/3M' },
-                            { label: 'Turbo (5 Mbps)', val: '5M/5M' },
-                            { label: 'Extreme (10 Mbps)', val: '10M/10M' }
-                          ].map((r) => (
-                            <button
-                              key={r.val}
-                              onClick={() => setGenRateLimit(r.val)}
-                              className={`py-3 px-2 rounded-xl border-2 transition-all font-bold text-[11px] ${genRateLimit === r.val
-                                ? 'bg-emerald-600/10 border-emerald-500 text-emerald-400'
-                                : 'bg-[#0B1320] border-[#26314A] text-slate-500 hover:border-slate-700'
-                                }`}
-                            >
-                              {r.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="pt-4">
-                        <button
-                          onClick={handleGenerateManual}
-                          disabled={isGeneratingVoucher}
-                          className="w-full mt-6 py-4 bg-blue-600 rounded-2xl font-black text-[10px] text-white uppercase tracking-widest hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
-                        >
-                          {isGeneratingVoucher ? (
-                            <RefreshCw size={16} className="animate-spin" />
-                          ) : (
-                            <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" />
-                          )}
-                          {isGeneratingVoucher ? 'MEMPROSES...' : 'GENERATE SEKARANG'}
-                        </button>
-                        <p className="text-[10px] text-center text-slate-500 mt-4 leading-relaxed px-4">
-                          Voucher akan otomatis didaftarkan ke MikroTik dan muncul di tabel riwayat secara real-time.
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -2767,6 +2715,106 @@ export default function DashboardConcept3() {
         </div>
       </div>
 
+      {/* GENERATE VOUCHER MODAL (Global - accessible from any tab) */}
+      {showGenerateModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" onClick={() => setShowGenerateModal(false)}>
+          <div className="bg-[#151D2F] border border-[#26314A] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()}>
+            <div className="p-8 border-b border-[#26314A] bg-[#1A233A]/50 flex justify-between items-center">
+              <div>
+                <h3 className="text-2xl font-black text-white tracking-tight">Generate Voucher</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Manual Hotspot Creation</p>
+              </div>
+              <button onClick={() => setShowGenerateModal(false)} className="text-slate-500 hover:text-white transition-colors">
+                <XCircle size={24} />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-8">
+              {/* Package Selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Pilih Paket Durasi</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {['1 Hour', '1 Day', '1 Week'].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setGenPack(p)}
+                      className={`py-4 rounded-2xl border-2 transition-all font-bold text-sm ${genPack === p
+                        ? 'bg-blue-600/10 border-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.2)]'
+                        : 'bg-[#0B1320] border-[#26314A] text-slate-500 hover:border-slate-700'
+                        }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Shared Users */}
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Shared Users (Limit Device)</label>
+                  <span className="bg-blue-500/10 text-blue-400 text-xs font-black px-2 py-1 rounded-md">{genShared} Devices</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={genShared}
+                  onChange={(e) => setGenShared(e.target.value)}
+                  className="w-full h-2 bg-[#0B1320] rounded-lg appearance-none cursor-pointer accent-blue-500 border border-[#26314A]"
+                />
+                <div className="flex justify-between text-[10px] text-slate-600 font-bold mt-2 px-1">
+                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
+                </div>
+              </div>
+
+              {/* Rate Limit Selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Limit Kecepatan (Upload/Download)</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Hemat (1 Mbps)', val: '1M/1M' },
+                    { label: 'Standar (3 Mbps)', val: '3M/3M' },
+                    { label: 'Turbo (5 Mbps)', val: '5M/5M' },
+                    { label: 'Extreme (10 Mbps)', val: '10M/10M' }
+                  ].map((r) => (
+                    <button
+                      key={r.val}
+                      onClick={() => setGenRateLimit(r.val)}
+                      className={`py-3 px-2 rounded-xl border-2 transition-all font-bold text-[11px] ${genRateLimit === r.val
+                        ? 'bg-emerald-600/10 border-emerald-500 text-emerald-400'
+                        : 'bg-[#0B1320] border-[#26314A] text-slate-500 hover:border-slate-700'
+                        }`}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <button
+                  onClick={handleGenerateManual}
+                  disabled={isGeneratingVoucher}
+                  className="w-full mt-6 py-4 bg-blue-600 rounded-2xl font-black text-[10px] text-white uppercase tracking-widest hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingVoucher ? (
+                    <RefreshCw size={16} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" />
+                  )}
+                  {isGeneratingVoucher ? 'MEMPROSES...' : 'GENERATE SEKARANG'}
+                </button>
+                <p className="text-[10px] text-center text-slate-500 mt-4 leading-relaxed px-4">
+                  Voucher akan otomatis didaftarkan ke MikroTik dan muncul di tabel riwayat secara real-time.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PRINT BATCH MODAL */}
       {
         showPrintModal && (
@@ -2966,18 +3014,29 @@ export default function DashboardConcept3() {
       <style dangerouslySetInnerHTML={{
         __html: `
         @media print {
-          body > * { display: none !important; }
+          /* Ensure root containers are visible */
+          body, #root { display: block !important; visibility: visible !important; background: white !important; }
+          /* Hide everything inside the main dashboard wrapper */
+          body > *:not(#root) { display: none !important; }
+          #root > * { display: none !important; }
+          #root > div > header,
+          #root > div > div,
+          #root > div > footer,
+          #root > div > style { display: none !important; }
+          /* Show the print container */
           .print-container {
             display: grid !important;
+            visibility: visible !important;
             grid-template-columns: repeat(2, 1fr) !important;
             gap: 20px !important;
             padding: 20px !important;
             background: white !important;
             width: 100% !important;
             height: auto !important;
-            position: absolute !important;
+            position: fixed !important;
             top: 0 !important;
             left: 0 !important;
+            z-index: 99999 !important;
           }
           .print-card {
             border: 2px dashed #cbd5e1 !important;
@@ -2988,11 +3047,13 @@ export default function DashboardConcept3() {
             gap: 16px !important;
             page-break-inside: avoid !important;
             color: black !important;
+            background: white !important;
           }
           .print-qr svg {
             width: 80px !important;
             height: 80px !important;
           }
+          .print-hidden { display: none !important; }
           @page { margin: 1cm; size: auto; }
         }
       `}} />

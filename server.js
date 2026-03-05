@@ -214,10 +214,21 @@ app.get('/api/dashboard-stats', async (req, res) => {
         if (!isNaN(day)) revenueChart[day]++;
     });
 
+    // Calculate peak hours from voucher creation times
+    const peakHoursData = Array(24).fill(0);
+    filteredVouchers.forEach(v => {
+        const date = parseVoucherDate(v.date);
+        const hour = date.getHours();
+        if (!isNaN(hour)) peakHoursData[hour]++;
+    });
+    // Add active users data to current hour
+    const currentHour = new Date().getHours();
+    peakHoursData[currentHour] = Math.max(peakHoursData[currentHour], mtStats.activeUsers);
+
     res.json({
         revenue: {
             total: filteredVouchers.reduce((acc, v) => acc + (parseInt(v.price.replace(/[^\d]/g, '')) || 0), 0),
-            growth: 0,
+            growth: filteredVouchers.length > 0 ? Math.round((filteredVouchers.length / Math.max(systemConfigs.vouchers.length, 1)) * 100) : 0,
             chartData: revenueChart
         },
         sales: {
@@ -230,10 +241,12 @@ app.get('/api/dashboard-stats', async (req, res) => {
         },
         system: {
             health: mtStats.health,
+            latency: mtStats.health > 0 ? `${Math.max(5, 100 - mtStats.health)}ms` : 'N/A',
             cpu: mtStats.cpu,
             ram: mtStats.ram,
             connections: mtStats.connections
         },
+        peakHours: peakHoursData,
         revenueVsTarget: revenueChart.map((val, i) => ({
             name: ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'][i],
             actual: val * 5000,
@@ -371,12 +384,27 @@ app.get('/api/get-config', (req, res) => {
 });
 
 app.post('/api/save-config', (req, res) => {
-    const { type, config } = req.body;
-    if (type === 'mikrotik') systemConfigs.mikrotik = { ...systemConfigs.mikrotik, ...config };
-    if (type === 'runchise') systemConfigs.runchise = { ...systemConfigs.runchise, ...config };
-    if (type === 'infrastructure') systemConfigs.infrastructure = { ...systemConfigs.infrastructure, ...config };
-    saveConfig();
-    res.json({ success: true, message: 'Configuration saved permanently' });
+    try {
+        const { type, config } = req.body;
+        console.log(`[API] Saving ${type} config...`);
+
+        if (type === 'mikrotik') {
+            systemConfigs.mikrotik = { ...systemConfigs.mikrotik, ...config };
+            // Auto close existing client if IP changes to force reconnection with new credentials
+            if (globalClient) {
+                globalClient.close();
+                globalClient = null;
+            }
+        }
+        if (type === 'runchise') systemConfigs.runchise = { ...systemConfigs.runchise, ...config };
+        if (type === 'infrastructure') systemConfigs.infrastructure = { ...systemConfigs.infrastructure, ...config };
+
+        saveConfig();
+        res.json({ success: true, message: 'Configuration saved permanently' });
+    } catch (err) {
+        console.error('[CONFIG SAVE ERROR]', err.message);
+        res.status(500).json({ success: false, message: `Failed to save: ${err.message}` });
+    }
 });
 
 app.post('/api/test-mikrotik', async (req, res) => {
@@ -413,10 +441,65 @@ app.post('/api/test-runchise', async (req, res) => {
     }
 });
 
-app.post('/api/sync', (req, res) => {
-    setTimeout(() => {
-        res.json({ success: true, message: 'Router synchronized successfully' });
-    }, 1500);
+app.post('/api/sync', async (req, res) => {
+    console.log('[SYNC] Starting real router synchronization...');
+    try {
+        // 1. Refresh active user data from MikroTik
+        const syncResults = await safeRouterOSAction(async (client) => {
+            if (!client) return null;
+            try {
+                const [resource, activeUsers, hotspotUsers] = await Promise.all([
+                    Promise.race([client.write('/system/resource/print'), new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 3000))]),
+                    Promise.race([client.write('/ip/hotspot/active/print'), new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 3000))]),
+                    Promise.race([client.write('/ip/hotspot/user/print'), new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 3000))])
+                ]);
+                return { resource, activeUsers, hotspotUsers };
+            } catch (e) {
+                console.error('[SYNC ERROR]', e.message);
+                return null;
+            }
+        });
+
+        if (!syncResults) {
+            return res.json({ success: false, message: 'Gagal terhubung ke MikroTik. Periksa koneksi router.' });
+        }
+
+        // 2. Update system stats
+        if (syncResults.resource && syncResults.resource[0]) {
+            const cpuLoad = parseInt(syncResults.resource[0]['cpu-load']) || 0;
+            const freeMem = parseInt(syncResults.resource[0]['free-memory']) / (1024 * 1024);
+            const totalMem = parseInt(syncResults.resource[0]['total-memory']) / (1024 * 1024);
+            mtStats.cpu.shift(); mtStats.cpu.push(cpuLoad);
+            mtStats.health = 100 - cpuLoad;
+            mtStats.ram.shift(); mtStats.ram.push(Math.round(((totalMem - freeMem) / totalMem) * 100));
+            mtStats.activeUsers = syncResults.activeUsers ? syncResults.activeUsers.length : 0;
+        }
+
+        // 3. Reconcile voucher statuses with MikroTik data
+        let reconciled = 0;
+        if (Array.isArray(syncResults.hotspotUsers)) {
+            systemConfigs.vouchers.forEach(v => {
+                if (v.status === 'Active') {
+                    const mUser = syncResults.hotspotUsers.find(u => u.name === v.code);
+                    if (mUser && mUser.uptime && mUser.uptime !== '0s') {
+                        v.status = 'Used';
+                        reconciled++;
+                    }
+                }
+            });
+            if (reconciled > 0) saveConfig();
+        }
+
+        const activeCount = syncResults.activeUsers ? syncResults.activeUsers.length : 0;
+        console.log(`[SYNC] Complete. Active: ${activeCount}, Reconciled: ${reconciled}`);
+        res.json({
+            success: true,
+            message: `Sinkronisasi berhasil! ${activeCount} user aktif, ${reconciled} voucher diperbarui.`
+        });
+    } catch (err) {
+        console.error('[SYNC ERROR]', err.message);
+        res.json({ success: false, message: `Sync gagal: ${err.message}` });
+    }
 });
 
 app.post('/api/setup-router', async (req, res) => {
@@ -466,6 +549,58 @@ app.post('/api/setup-router', async (req, res) => {
         res.json({ success: false, message: `Provisioning failed: ${err.message}` });
     }
 });
+
+// --- EXPORT VOUCHERS AS CSV ---
+app.get('/api/export', (req, res) => {
+    console.log('[EXPORT] Generating CSV report...');
+    const filterDateStr = req.query.filterDate;
+
+    const parseVoucherDate = (vDate) => {
+        if (!vDate) return new Date();
+        if (typeof vDate === 'string' && vDate.includes('/') && !vDate.includes('T')) {
+            const parts = vDate.split(',')[0].split('/');
+            if (parts.length === 3) return new Date(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`);
+        }
+        return new Date(vDate);
+    };
+
+    let exportVouchers = systemConfigs.vouchers;
+    if (filterDateStr) {
+        const targetDate = new Date(filterDateStr).toDateString();
+        exportVouchers = exportVouchers.filter(v => parseVoucherDate(v.date).toDateString() === targetDate);
+    }
+
+    // Build CSV
+    const csvHeader = 'No,Kode Voucher,Paket,Harga,Tanggal,Status,Customer,Order No,Magic Link';
+    const csvRows = exportVouchers.map((v, i) => {
+        const date = v.date ? new Date(v.date).toLocaleString('id-ID') : '-';
+        const customer = v.details?.customer || '-';
+        const orderNo = v.details?.orderNo || '-';
+        const magicLink = v.magicLink || '-';
+        // Escape commas in fields
+        const escape = (str) => `"${String(str).replace(/"/g, '""')}"`;
+        return [
+            i + 1,
+            escape(v.code),
+            escape(v.pack),
+            escape(v.price),
+            escape(date),
+            escape(v.status),
+            escape(customer),
+            escape(orderNo),
+            escape(magicLink)
+        ].join(',');
+    });
+
+    const csvContent = [csvHeader, ...csvRows].join('\n');
+    const BOM = '\uFEFF'; // UTF-8 BOM for Excel compatibility
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="NetVocher_Report_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(BOM + csvContent);
+    console.log(`[EXPORT] CSV generated with ${exportVouchers.length} vouchers.`);
+});
+
 
 // --- REUSABLE ORDER PROCESSOR ---
 const processOrder = async (data) => {

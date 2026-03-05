@@ -21,6 +21,30 @@
   },
   "vouchers": [
     {
+      "code": "MAN-45732",
+      "pack": "1 Hour",
+      "price": "Rp 2.000",
+      "date": "2026-03-05T05:18:39.412Z",
+      "status": "Active",
+      "magicLink": "http://100.100.10.1/login?username=MAN-45732",
+      "details": {
+        "customer": "Manual Generation",
+        "orderNo": "MANUAL"
+      }
+    },
+    {
+      "code": "MAN-60527",
+      "pack": "1 Hour",
+      "price": "Rp 2.000",
+      "date": "2026-03-05T04:54:30.332Z",
+      "status": "Active",
+      "magicLink": "http://100.100.10.1/login?username=MAN-60527",
+      "details": {
+        "customer": "Manual Generation",
+        "orderNo": "MANUAL"
+      }
+    },
+    {
       "code": "MAN-72153",
       "pack": "1 Hour",
       "price": "Rp 2.000",
