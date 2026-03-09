@@ -573,7 +573,12 @@ app.post('/api/sync', async (req, res) => {
             systemConfigs.vouchers.forEach(v => {
                 if (v.status === 'Active') {
                     const mUser = syncResults.hotspotUsers.find(u => u.name === v.code);
-                    if (mUser && mUser.uptime && mUser.uptime !== '0s') {
+                    // Optimized: Only mark as used if uptime is meaningful (> 15s) or data has been transferred
+                    // Note: RouterOS returns uptime as a string like "00:00:15" or "15s"
+                    const hasUptime = mUser && mUser.uptime && mUser.uptime !== '0s' && mUser.uptime !== '00:00:00';
+                    const bytesIn = parseInt(mUser?.['bytes-in']) || 0;
+
+                    if (hasUptime && (bytesIn > 51200)) { // More than 50KB transferred or active session
                         v.status = 'Used';
                         reconciled++;
                     }
@@ -1043,8 +1048,10 @@ const processOrder = async (data) => {
             const profileNames = existingProfiles.map(p => p.name);
 
             if (profileNames.length > 0 && !profileNames.includes(finalProfile)) {
-                console.warn(`[MIKROTIK] Profile ${finalProfile} not found! Falling back to default or first available.`);
-                if (profileNames.includes('default')) finalProfile = 'default';
+                console.warn(`[MIKROTIK] Profile ${finalProfile} not found! Searching best match...`);
+                // Attempt to find base profile if dynamic one is missing
+                if (profileNames.includes(profile)) finalProfile = profile;
+                else if (profileNames.includes('default')) finalProfile = 'default';
                 else finalProfile = profileNames[0];
             }
 
@@ -1148,7 +1155,7 @@ app.post('/api/create-voucher', async (req, res) => {
     const { ip, user, pass } = systemConfigs.mikrotik;
 
     const mtClient = (ip && ip !== '192.168.88.1' && ip !== '')
-        ? new RouterOSAPI({ host: ip, user: user, password: pass, keepalive: false, timeout: 12 })
+        ? new RouterOSAPI({ host: ip, user: user, password: pass, keepalive: false, timeout: 20 })
         : null;
 
     if (mtClient) mtClient.on('error', (err) => {
