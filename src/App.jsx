@@ -11,7 +11,7 @@ import {
   Bell, Calendar, MoreHorizontal, Activity, Printer, Download, RefreshCw, Zap,
   Wifi, Shield, Server, ArrowUpRight, LayoutDashboard, Ticket, FileText, Settings,
   LogOut, Users, HelpCircle, Search, ChevronRight, AlertTriangle, WifiOff,
-  CheckCircle, XCircle, Plus, Lock, Eye, EyeOff
+  CheckCircle, XCircle, Plus, Lock, Unlock, Eye, EyeOff, MessageSquare
 } from 'lucide-react';
 
 // --- CountUp Component for Animated Numbers ---
@@ -20,16 +20,27 @@ function CountUp({ end, prefix = '', suffix = '', decimals = 0, duration = 2000 
 
   useEffect(() => {
     let startTimestamp = null;
+    let animationFrameId;
+
     const step = (timestamp) => {
       if (!startTimestamp) startTimestamp = timestamp;
       const progress = Math.min((timestamp - startTimestamp) / duration, 1);
       const current = progress * end;
       setCount(current);
       if (progress < 1) {
-        window.requestAnimationFrame(step);
+        animationFrameId = window.requestAnimationFrame(step);
       }
     };
-    window.requestAnimationFrame(step);
+
+    // Mulai animasi dari 0 menuju `end`
+    animationFrameId = window.requestAnimationFrame(step);
+
+    // Bersihkan saat unmount atau saat dependensi berubah
+    return () => {
+      if (animationFrameId) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+    };
   }, [end, duration]);
 
   const formatted = decimals > 0
@@ -41,8 +52,32 @@ function CountUp({ end, prefix = '', suffix = '', decimals = 0, duration = 2000 
 
 // ... existing code ...
 
-export default function DashboardConcept3() {
-  const [activeTab, setActiveTab] = useState('Overview');
+function App() {
+  const [activeTab, setActiveTab] = useState(() => {
+    const hash = window.location.hash.replace('#', '').replace(/%20/g, ' ');
+    const validTabs = ['Overview', 'Vouchers', 'Customers', 'Reports', 'Access Point', 'Settings', 'Active Logs', 'Support'];
+    return validTabs.includes(hash) ? hash : (localStorage.getItem('nv_active_tab') || 'Overview');
+  });
+
+  useEffect(() => {
+    localStorage.setItem('nv_active_tab', activeTab);
+    if (window.location.hash !== `#${activeTab}`) {
+      window.location.hash = activeTab;
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '').replace(/%20/g, ' ');
+      const validTabs = ['Overview', 'Vouchers', 'Customers', 'Reports', 'Access Point', 'Settings', 'Active Logs', 'Support'];
+      if (validTabs.includes(hash) && hash !== activeTab) {
+        setActiveTab(hash);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [activeTab]);
+
   const [stats, setStats] = useState(null);
   const [vouchers, setVouchers] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -55,7 +90,8 @@ export default function DashboardConcept3() {
   const [isTestingMikroTik, setIsTestingMikroTik] = useState(false);
   const [isTestingRunchise, setIsTestingRunchise] = useState(false);
   const [testResults, setTestResults] = useState({ mikrotik: null, runchise: null });
-  const [mtConfig, setMtConfig] = useState({ ip: '', user: 'admin', pass: '' });
+  const [adminAuth, setAdminAuth] = useState({ username: 'kepalatoko', password: 'rahasia123' });
+  const [mtConfig, setMtConfig] = useState({ ip: '', user: 'admin', pass: '', dnsName: 'Samsstudio.net', loginPath: '/login', userGroup: 'full' });
   const [rcConfig, setRcConfig] = useState({ apiKey: '', defaultPack: '1 Hour', defaultProfile: 'NV-1H', defaultSharedUsers: '1', mapping: [] });
   const [manualSyncData, setManualSyncData] = useState({ orderId: '', amount: '', customer: '', packKeyword: 'hour' });
   const [isSyncingOrder, setIsSyncingOrder] = useState(false);
@@ -74,6 +110,7 @@ export default function DashboardConcept3() {
   const [activeMenuId, setActiveMenuId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [mtLogs, setMtLogs] = useState([]);
   const [genPack, setGenPack] = useState('1 Hour');
   const [genShared, setGenShared] = useState('1');
   const [genRateLimit, setGenRateLimit] = useState('2M/2M');
@@ -90,14 +127,34 @@ export default function DashboardConcept3() {
     broadcastPromo: false
   });
   const [customerSearch, setCustomerSearch] = useState('');
+  const [discoveredDevices, setDiscoveredDevices] = useState([]);
+  const [showManualGen, setShowManualGen] = useState(false);
+  const [manualGenQty, setManualGenQty] = useState(1);
+  const [manualGenLimit, setManualGenLimit] = useState(1);
+  const [manualGenDur, setManualGenDur] = useState(60);
+  const [manualGenPrice, setManualGenPrice] = useState(2000);
+  const [manualGenSpeed, setManualGenSpeed] = useState('2M/5M');
+  const [manualGenLabel, setManualGenLabel] = useState('');
+  const [orderIdInput, setOrderIdInput] = useState('');
+  const [genVolumeLimit, setGenVolumeLimit] = useState('0');
+  const [wifiSettings, setWifiSettings] = useState({ ssid: 'NetVocher_Free', password: '', status: 'unknown' });
+  const [isUpdatingWifi, setIsUpdatingWifi] = useState(false);
+  const [infraStatus, setInfraStatus] = useState([]);
+  const [isSettingsUnlocked, setIsSettingsUnlocked] = useState(false);
+  const [settingsLoginError, setSettingsLoginError] = useState('');
+  const [settingsLoginForm, setSettingsLoginForm] = useState({ password: '' });
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
 
   const fetchConfig = async () => {
     try {
       const res = await axios.get(`http://${window.location.hostname}:3001/api/get-config`);
       if (res.data) {
+        if (res.data.adminAuth) setAdminAuth(res.data.adminAuth);
         if (res.data.mikrotik) setMtConfig(res.data.mikrotik);
         if (res.data.runchise) setRcConfig(res.data.runchise);
         if (res.data.infrastructure) setInfraConfig(res.data.infrastructure);
+        if (res.data.wifi) setWifiSettings(res.data.wifi);
       }
     } catch (err) {
       console.warn('Could not fetch initial config');
@@ -114,8 +171,9 @@ export default function DashboardConcept3() {
       ];
 
       if (activeTab === 'Log User Aktif' || activeTab === 'Customers') endpoints.push({ key: 'activeUsers', url: `/api/active-users` });
+      if (activeTab === 'Logging') endpoints.push({ key: 'mikrotikLogs', url: `/api/mikrotik-logs` });
       if (activeTab === 'Access Point') {
-        endpoints.push({ key: 'leases', url: `/api/dhcp-leases` });
+        handleDiscovery();
         endpoints.push({ key: 'interfaces', url: `/api/mikrotik-interfaces` });
       }
 
@@ -132,6 +190,7 @@ export default function DashboardConcept3() {
         if (res.key === 'stats' && res.data) setStats(res.data);
         if (res.key === 'notifications' && Array.isArray(res.data)) setNotifList(res.data);
         if (res.key === 'activeUsers' && Array.isArray(res.data)) setActiveUsers(res.data);
+        if (res.key === 'mikrotikLogs' && Array.isArray(res.data)) setMtLogs(res.data);
         if (res.key === 'leases' && Array.isArray(res.data)) setDhcpLeases(res.data.map(l => ({ ...l, activeId: `auto-${l.address}` })));
         if (res.key === 'interfaces' && Array.isArray(res.data)) setMtInterfaces(res.data);
       });
@@ -144,12 +203,65 @@ export default function DashboardConcept3() {
     }
   };
 
-  useEffect(() => {
-    fetchConfig();
-    fetchAllData();
+  const handleDiscovery = async () => {
+    try {
+      const res = await axios.get(`http://${window.location.hostname}:3001/api/infrastructure-discover`);
+      if (res.data.success) {
+        if (res.data.devices) {
+          setDiscoveredDevices(res.data.devices.map(d => ({ ...d, activeId: `disc-${d.mac}` })));
+        }
+        if (res.data.autoUpdated > 0) {
+          // Refresh config to get new IPs
+          fetchConfig();
+          // Notify user
+          const msg = `Auto-discovery: ${res.data.autoUpdated} perangkat telah diperbarui lokasinya secara otomatis.`;
+          setNotifList(prev => [{ id: Date.now(), text: msg, type: 'info', time: 'Just now' }, ...prev]);
+        }
+      }
+    } catch (err) {
+      console.warn('Discovery failed');
+    }
+  };
 
-    const pollId = setInterval(() => fetchAllData(true), 12000);
-    return () => clearInterval(pollId);
+  const checkInfraStatus = async () => {
+    try {
+      const res = await axios.get(`http://${window.location.hostname}:3001/api/infrastructure-status`);
+      if (Array.isArray(res.data)) setInfraStatus(res.data);
+    } catch (err) {
+      console.warn('Status check failed');
+    }
+  };
+
+  useEffect(() => {
+    // Initial parallel load for better performance
+    Promise.all([fetchConfig(), fetchAllData()]);
+
+    // Stats and general polling - 30s base
+    const pollId = setInterval(() => fetchAllData(true), 30000);
+
+    // More aggressive polling for active users if on that tab - 10s
+    let activeUserPollId = null;
+    if (activeTab === 'Log User Aktif' || activeTab === 'Customers') {
+      activeUserPollId = setInterval(() => {
+        axios.get(`http://${window.location.hostname}:3001/api/active-users`)
+          .then(res => setActiveUsers(res.data))
+          .catch(() => { });
+      }, 10000);
+    }
+
+    // Auto discovery & status check only if on Access Point tab - 10s status
+    let statusId = null;
+    if (activeTab === 'Access Point') {
+      statusId = setInterval(checkInfraStatus, 10000);
+      handleDiscovery(); // Single run on mount tab
+      checkInfraStatus();
+    }
+
+    return () => {
+      clearInterval(pollId);
+      if (activeUserPollId) clearInterval(activeUserPollId);
+      if (statusId) clearInterval(statusId);
+    };
   }, [filterDate, activeTab]);
 
   const navItems = [
@@ -157,10 +269,11 @@ export default function DashboardConcept3() {
     { id: 'Vouchers', icon: Ticket, label: 'Vouchers' },
     { id: 'Customers', icon: Users, label: 'Users' },
     { id: 'Reports', icon: FileText, label: 'Reports' },
-    { id: 'Access Point', icon: Wifi, label: 'Koneksi AP/Router' },
-    { id: 'Settings', icon: Settings, label: 'Settings' },
+    { id: 'Access Point', icon: Wifi, label: 'Infrastruktur' },
+    { id: 'Logging', icon: MessageSquare, label: 'Logging System' },
     { id: 'Active Logs', icon: Activity, label: 'Log User Aktif' },
-    { id: 'Support', icon: HelpCircle, label: 'Support' },
+    { id: 'Settings', icon: Settings, label: 'Pengaturan' },
+    { id: 'Support', icon: HelpCircle, label: 'Bantuan' },
   ];
 
   const handleSync = async () => {
@@ -195,19 +308,28 @@ export default function DashboardConcept3() {
 
   const handleSaveMikroTik = async () => {
     try {
-      await axios.post(`http://${window.location.hostname}:3001/api/save-config`, { type: 'mikrotik', config: mtConfig });
-      alert('MikroTik configuration saved successfully!');
+      const res = await axios.post(`http://${window.location.hostname}:3001/api/save-config`, { type: 'mikrotik', config: mtConfig });
+      if (res.data.success) {
+        alert('✅ Konfigurasi MikroTik berhasil disimpan!');
+        fetchAllData(true); // Refresh data to immediately attempt reconnection
+      } else {
+        alert(`❌ Gagal menyimpan: ${res.data.message}`);
+      }
     } catch (e) {
-      alert('Failed to save MikroTik config.');
+      alert(`⚠️ Server Error: Gagal menyimpan konfigurasi MikroTik. Pastikan backend berjalan. (${e.message})`);
     }
   };
 
   const handleSaveRunchise = async () => {
     try {
-      await axios.post(`http://${window.location.hostname}:3001/api/save-config`, { type: 'runchise', config: rcConfig });
-      alert('Runchise API configuration saved!');
+      const res = await axios.post(`http://${window.location.hostname}:3001/api/save-config`, { type: 'runchise', config: rcConfig });
+      if (res.data.success) {
+        alert('✅ Runchise API konfigurasi berhasil disimpan!');
+      } else {
+        alert(`❌ Gagal menyimpan: ${res.data.message}`);
+      }
     } catch (e) {
-      alert('Failed to save Runchise config.');
+      alert(`⚠️ Server Error: Gagal menyimpan konfigurasi Runchise. (${e.message})`);
     }
   };
 
@@ -218,9 +340,13 @@ export default function DashboardConcept3() {
       // Ensure config is saved first
       await axios.post(`http://${window.location.hostname}:3001/api/save-config`, { type: 'mikrotik', config: mtConfig });
       const res = await axios.post(`http://${window.location.hostname}:3001/api/setup-router`);
-      alert(res.data.message);
+      if (res.data.success) {
+        alert(`✅ ${res.data.message}`);
+      } else {
+        alert(`❌ Setup gagal: ${res.data.message}`);
+      }
     } catch (e) {
-      alert('Provisioning failed. Check logs.');
+      alert(`⚠️ Server Error: Tidak dapat menjalankan setup router. (${e.message})`);
     } finally {
       setIsProvisioning(false);
     }
@@ -277,7 +403,8 @@ export default function DashboardConcept3() {
       const res = await axios.post(`http://${window.location.hostname}:3001/api/create-voucher`, {
         pack: genPack,
         sharedUsers: genShared,
-        rateLimit: genRateLimit
+        rateLimit: genRateLimit,
+        volumeLimit: genVolumeLimit
       });
       if (res.data.success) {
         setShowGenerateModal(false);
@@ -287,25 +414,78 @@ export default function DashboardConcept3() {
         alert(`✅ VOUCHER BERHASIL DIBUAT!\nKode: ${res.data.voucher.code}\nLimit: ${genRateLimit}`);
       }
     } catch (e) {
-      alert('Gagal membuat voucher. Pastikan Router MikroTik terhubung.');
+      const msg = e.response?.data?.message || e.message;
+      alert('Gagal membuat voucher. Detail: ' + msg);
     } finally {
       setIsGeneratingVoucher(false);
     }
   };
 
   const handleManualSync = async () => {
-    if (!manualSyncData.orderId) return alert('Input Order ID!');
+    const targetOrderId = orderIdInput || manualSyncData.orderId;
+    if (!targetOrderId) return alert('Input Order ID!');
     setIsSyncingOrder(true);
     try {
-      const res = await axios.post(`http://${window.location.hostname}:3001/api/manual-sync-order`, manualSyncData);
+      const res = await axios.post(`http://${window.location.hostname}:3001/api/manual-sync-order`, {
+        ...manualSyncData,
+        orderId: targetOrderId
+      });
       if (res.data.success) {
+        setOrderIdInput('');
+        fetchAllData(true);
         alert(res.data.message);
-        window.location.reload(); // Refresh to see new voucher
       }
     } catch (err) {
       alert('Manual Sync Failed: ' + (err.response?.data?.message || err.message));
     } finally {
       setIsSyncingOrder(false);
+    }
+  };
+
+  const handlePremiumManualGen = async () => {
+    if (isGeneratingVoucher) return;
+    setIsGeneratingVoucher(true);
+    try {
+      const res = await axios.post(`http://${window.location.hostname}:3001/api/create-voucher`, {
+        pack: manualGenDur.toString(),
+        sharedUsers: manualGenLimit.toString(),
+        price: manualGenPrice.toString(),
+        rateLimit: manualGenSpeed,
+        volumeLimit: genVolumeLimit,
+        qty: manualGenQty,
+        comment: manualGenLabel || 'Manual Generate'
+      });
+      if (res.data.success) {
+        setShowManualGen(false);
+        fetchAllData(true);
+        alert(`✅ ${res.data.vouchers?.length || 1} Voucher berhasil dibuat!`);
+      }
+    } catch (e) {
+      const msg = e.response?.data?.message || e.message;
+      alert('Gagal membuat voucher. Detail: ' + msg);
+    } finally {
+      setIsGeneratingVoucher(false);
+    }
+  };
+
+  const printVoucher = (v) => {
+    setSelectedVoucher(v);
+    setTimeout(() => {
+      window.print();
+    }, 300);
+  };
+
+  const handleUpdateWifi = async () => {
+    setIsUpdatingWifi(true);
+    try {
+      const res = await axios.post(`http://${window.location.hostname}:3001/api/update-wifi`, wifiSettings);
+      if (res.data.success) {
+        alert('✅ SUCCESS: SSID Wi-Fi berhasil diperbarui pada MikroTik.');
+      }
+    } catch (e) {
+      alert('❌ ERROR: Gagal memperbarui SSID Wi-Fi. Cek koneksi router.');
+    } finally {
+      setIsUpdatingWifi(false);
     }
   };
 
@@ -316,7 +496,7 @@ export default function DashboardConcept3() {
   };
 
   const addMapping = () => {
-    setRcConfig({ ...rcConfig, mapping: [...rcConfig.mapping, { keyword: '', pack: '', profile: '', rateLimit: '' }] });
+    setRcConfig({ ...rcConfig, mapping: [...rcConfig.mapping, { keyword: '', pack: '', profile: '', rateLimit: '', volumeLimit: '0' }] });
   };
 
   const removeMapping = (index) => {
@@ -399,24 +579,57 @@ export default function DashboardConcept3() {
     setLoginError('');
     setIsLoggingIn(true);
 
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    try {
+      const res = await axios.post(`http://${window.location.hostname}:3001/api/admin-login`, {
+        username: loginForm.username,
+        password: loginForm.password
+      });
 
-    if (loginForm.username === 'admin' && loginForm.password === 'admin123') {
-      localStorage.setItem('nv_session', 'active');
-      localStorage.setItem('nv_user', loginForm.username);
-      setIsLoggedIn(true);
-    } else {
+      if (res.data.success) {
+        localStorage.setItem('nv_session', 'active');
+        localStorage.setItem('nv_user', loginForm.username);
+        setIsLoggedIn(true);
+      }
+    } catch (err) {
       setLoginError('Username atau password salah!');
+    } finally {
+      setIsLoggingIn(false);
     }
-    setIsLoggingIn(false);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('nv_session');
     localStorage.removeItem('nv_user');
     setIsLoggedIn(false);
+    setIsSettingsUnlocked(false);
     setLoginForm({ username: '', password: '' });
     setShowProfile(false);
+    setActiveTab('Overview');
+  };
+
+  const handleSettingsLogin = async (e) => {
+    e.preventDefault();
+    setSettingsLoginError('');
+    setIsLoggingIn(true);
+    try {
+      const res = await axios.post(`http://${window.location.hostname}:3001/api/admin-login`, {
+        username: adminAuth.username,
+        password: settingsLoginForm.password
+      });
+
+      if (res.data.success) {
+        setIsSettingsUnlocked(true);
+      }
+    } catch (err) {
+      setSettingsLoginError('Password administrator salah!');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleSettingsLogout = () => {
+    setIsSettingsUnlocked(false);
+    setSettingsLoginForm({ password: '' });
   };
 
   // --- LOGIN PAGE ---
@@ -646,1913 +859,1894 @@ export default function DashboardConcept3() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#070D1A] text-slate-300 font-sans selection:bg-blue-500/30 relative overflow-hidden">
+    <div className="flex min-h-screen bg-[#070D1A] text-slate-300 font-sans selection:bg-blue-500/30 relative overflow-hidden">
 
-      {/* Ambient background layers */}
-      <div className="pointer-events-none absolute inset-0 z-0">
-        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-blue-600/5 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[10%] right-[-5%] w-[35%] h-[35%] bg-indigo-600/5 rounded-full blur-[100px]" />
-      </div>
-
-      {/* Dot Grid */}
-      <div className="pointer-events-none absolute inset-0 z-0" style={{
-        backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(148,163,184,0.04) 1px, transparent 0)',
-        backgroundSize: '40px 40px'
-      }} />
-
-      {/* TOP NAVBAR */}
-      <header className="fixed top-0 left-0 right-0 z-50">
-        {/* Animated Gradient Accent */}
-        <div className="h-[2px] bg-gradient-to-r from-blue-500 via-cyan-400 to-indigo-500 shadow-[0_0_15px_rgba(56,189,248,0.5)]"></div>
-
-        <div className="bg-[#070D1A]/70 backdrop-blur-3xl border-b border-[#26314A]/60 shadow-2xl px-6 py-2">
-          {isOffline && (
-            <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-1.5 flex items-center justify-center gap-2 animate-pulse">
-              <AlertTriangle size={12} className="text-red-500" />
-              <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">System Connection Lost</span>
+      {/* SIDEBAR (Desktop) */}
+      <aside className="hidden md:flex flex-col w-64 bg-[#070D1A]/80 backdrop-blur-3xl border-r border-[#26314A]/60 fixed h-full z-[60] overflow-y-auto">
+        {/* Sidebar Top: Logo */}
+        <div className="p-6 border-b border-white/[0.05]">
+          <div className="flex items-center gap-3 group cursor-pointer" onClick={() => setActiveTab('Overview')}>
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-xl shadow-blue-500/20 ring-1 ring-white/10 group-hover:scale-105 transition-transform duration-300">
+              <Wifi size={20} className="text-white" />
             </div>
-          )}
+            <div>
+              <h1 className="text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 font-black tracking-tight text-base leading-none drop-shadow-sm">NetVocher</h1>
+              <p className="text-[8px] text-blue-400 font-bold uppercase tracking-[0.3em] mt-0.5 tracking-widest">Control Center</p>
+            </div>
+          </div>
+        </div>
 
-          <div className="max-w-[1500px] mx-auto flex items-center justify-between">
-            {/* Logo Section */}
-            <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setActiveTab('Overview')}>
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-xl shadow-blue-500/20 ring-1 ring-white/10 group-hover:scale-105 transition-transform duration-300">
-                <Wifi size={20} className="text-white" />
+        {/* Sidebar Nav Items */}
+        <nav className="flex-1 p-4 space-y-1.5 mt-2">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`relative w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black transition-all group overflow-hidden ${activeTab === item.id
+                ? 'text-white'
+                : 'text-slate-500 hover:text-white hover:bg-white/[0.03]'
+                }`}
+            >
+              {activeTab === item.id && (
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/30 ring-1 ring-white/10 z-0"></div>
+              )}
+              <span className="relative z-10 flex items-center gap-3">
+                <item.icon size={16} className={activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-blue-400 transition-colors'} />
+                <span className="uppercase tracking-[0.15em]">{item.label}</span>
+              </span>
+              {activeTab === item.id && (
+                <div className="absolute right-0 w-1 h-3/5 bg-white/40 rounded-l-full z-10"></div>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        {/* Sidebar Footer Link */}
+        <div className="p-4 border-t border-white/[0.05]">
+          <div className="px-4 py-3 bg-white/[0.02] border border-white/[0.05] rounded-2xl">
+            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Status Nodes</p>
+            <div className="flex items-center gap-2">
+              <div className={`w-1.5 h-1.5 rounded-full ${testResults.mikrotik === 'success' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-red-500'} animate-pulse`}></div>
+              <span className="text-[9px] font-black text-white">{testResults.mikrotik === 'success' ? 'ROUTER ONLINE' : 'ROUTER OFFLINE'}</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* PAGE RIGHT CONTENT AREA */}
+      <div className="flex-1 flex flex-col md:ml-64">
+
+        {/* TOP NAVBAR */}
+        <header className="fixed top-0 right-0 left-0 md:left-64 z-50">
+          {/* Animated Gradient Accent */}
+          <div className="h-[2px] bg-gradient-to-r from-blue-500 via-cyan-400 to-indigo-500 shadow-[0_0_15px_rgba(56,189,248,0.5)]"></div>
+
+
+          <div className="bg-[#070D1A]/70 backdrop-blur-3xl border-b border-[#26314A]/60 shadow-2xl px-6 py-2">
+            {isOffline && (
+              <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-1.5 flex items-center justify-center gap-2 animate-pulse">
+                <AlertTriangle size={12} className="text-red-500" />
+                <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">System Connection Lost</span>
               </div>
-              <div className="hidden sm:block">
-                <h1 className="text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 font-black tracking-tight text-base leading-none drop-shadow-sm">NetVocher</h1>
-                <p className="text-[8px] text-blue-400 font-bold uppercase tracking-[0.3em] mt-0.5 tracking-widest">Control Center</p>
+            )}
+
+            <div className="max-w-[1500px] w-full mx-auto flex items-center justify-between">
+              {/* Mobile Only: Small Logo */}
+              <div className="flex md:hidden items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center">
+                  <Wifi size={16} className="text-white" />
+                </div>
+                <span className="font-black text-sm text-white tracking-tighter">NV</span>
+              </div>
+
+              {/* Tools on Right (Desktop & Mobile) */}
+              <div className="flex items-center gap-4 ml-auto">
+
+
+                {/* Action Icons */}
+                <div className="flex items-center gap-2">
+                  {/* Notification */}
+                  <div className="relative">
+                    <button
+                      onClick={() => { setShowNotifs(!showNotifs); setShowProfile(false); }}
+                      className={`p-2.5 rounded-xl border transition-all active:scale-95 group relative shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${showNotifs ? 'bg-blue-600/20 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.15)]' : 'bg-[#151D2F]/80 border-[#26314A]/60 hover:border-[#26314A] hover:bg-[#1A233A]'}`}
+                    >
+                      <Bell size={16} className={showNotifs ? 'text-blue-400' : 'text-slate-400 group-hover:text-white transition-colors'} />
+                      {notifList.length > 0 && (
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-[#151D2F]"></span>
+                      )}
+                    </button>
+
+                    {/* Redesigned Notification Dropdown */}
+                    {showNotifs && (
+                      <div className="absolute right-0 mt-3 w-80 bg-[#121929]/95 backdrop-blur-3xl border border-white/[0.08] rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="p-4 bg-white/[0.03] border-b border-white/[0.05] flex justify-between items-center">
+                          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Activity Center</span>
+                          <button onClick={() => setNotifList([])} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors">Clear All</button>
+                        </div>
+                        <div className="max-h-[350px] overflow-y-auto divide-y divide-white/[0.04]">
+                          {notifList?.length > 0 ? notifList.map(n => (
+                            <div key={n.id} className="p-4 hover:bg-white/[0.02] transition-colors cursor-pointer group">
+                              <p className="text-xs text-slate-300 group-hover:text-white mb-1 leading-relaxed">{n?.text || 'System Update'}</p>
+                              <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">{n?.time || 'Just now'}</p>
+                            </div>
+                          )) : (
+                            <div className="py-12 flex flex-col items-center justify-center opacity-30">
+                              <Bell size={24} className="mb-3 text-slate-600" />
+                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">No New Tasks</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Profile */}
+                  <div className="relative">
+                    <button
+                      onClick={() => { setShowProfile(!showProfile); setShowNotifs(false); }}
+                      className={`flex items-center gap-2 p-1 rounded-2xl border transition-all active:scale-95 group shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${showProfile ? 'bg-blue-600/10 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.1)]' : 'bg-[#151D2F]/80 border-[#26314A]/60 hover:border-[#26314A] hover:bg-[#1A233A]'}`}
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg ring-1 ring-white/10 group-hover:shadow-blue-500/20">
+                        <span className="text-white text-[10px] font-black">AD</span>
+                      </div>
+                      <div className="hidden lg:block text-right pr-2">
+                        <p className="text-[9px] font-black text-white uppercase tracking-widest leading-none">Admin</p>
+                        <p className="text-[8px] font-bold text-slate-500 mt-0.5">Master</p>
+                      </div>
+                    </button>
+
+                    {/* Redesigned Profile Menu */}
+                    {showProfile && (
+                      <div className="absolute right-0 mt-3 w-56 bg-[#121929]/95 backdrop-blur-3xl border border-white/[0.08] rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="p-5 bg-white/[0.03] border-b border-white/[0.05]">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
+                              <Shield size={18} className="text-blue-400" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-black text-white uppercase tracking-tight">System Admin</p>
+                              <p className="text-[9px] font-bold text-slate-500">Full Access Manager</p>
+                            </div>
+                          </div>
+
+                          {/* System Stats Moved Here */}
+                          <div className="space-y-2 mt-4">
+                            <div className="flex items-center justify-between px-3 py-2 bg-white/[0.03] border border-white/10 rounded-xl">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Router Status</span>
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-1.5 h-1.5 rounded-full ${testResults.mikrotik === 'success' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]'}`}></div>
+                                <span className="text-[9px] font-black text-white uppercase tracking-widest">{testResults.mikrotik === 'success' ? 'ONLINE' : 'OFFLINE'}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between px-3 py-2 bg-white/[0.03] border border-white/10 rounded-xl">
+                              <div className="flex items-center gap-2">
+                                <Calendar size={12} className="text-blue-400" />
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filter Date</span>
+                              </div>
+                              <input
+                                type="date"
+                                value={filterDate}
+                                onChange={handleDateChange}
+                                className="bg-transparent border-none text-[9px] text-white outline-none cursor-pointer font-black uppercase text-right w-[100px]"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex gap-1.5 mt-3">
+                            <div className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                              <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">Active</span>
+                            </div>
+                            <div className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
+                              <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">V3.0.4</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="p-2 space-y-1">
+                          <button
+                            onClick={() => { setActiveTab('Settings'); setShowProfile(false); }}
+                            className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl hover:bg-white/[0.04] text-slate-300 hover:text-white transition-all group"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Settings size={14} className="text-slate-500 group-hover:text-blue-400" />
+                              <span className="text-[10px] font-black uppercase tracking-widest">Preferences</span>
+                            </div>
+                            <ChevronRight size={12} className="text-slate-700" />
+                          </button>
+                          <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl hover:bg-red-500/10 text-red-400/80 hover:text-red-400 transition-all group"
+                          >
+                            <div className="flex items-center gap-3">
+                              <LogOut size={14} />
+                              <span className="text-[10px] font-black uppercase tracking-widest">Exit Session</span>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Desktop Navigation (Segmented Control style) */}
-            <nav className="hidden md:flex items-center gap-1 bg-[#0A111E]/80 border border-[#26314A]/50 rounded-2xl p-1.5 backdrop-blur-xl shadow-inner">
+            {/* Mobile Tab Scroller */}
+            <div className="flex md:hidden items-center gap-1.5 px-4 pb-3 overflow-x-auto bg-[#0D1526]/80 backdrop-blur-xl border-b border-white/[0.05] scrollbar-hide">
               {navItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black transition-all duration-300 group ${activeTab === item.id
-                    ? 'text-white'
-                    : 'text-slate-500 hover:text-white hover:bg-[#1A233A]/60'
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black whitespace-nowrap transition-all uppercase tracking-widest ${activeTab === item.id
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                    : 'text-slate-500 bg-white/[0.03]'
                     }`}
                 >
-                  {activeTab === item.id && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl shadow-lg shadow-blue-500/30 ring-1 ring-white/10 z-0"></div>
-                  )}
-                  <span className="relative z-10 flex items-center gap-2">
-                    <item.icon size={14} className={activeTab === item.id ? 'text-white drop-shadow-md' : 'text-slate-500 group-hover:text-blue-400 transition-colors'} />
-                    <span className="hidden lg:inline uppercase tracking-widest">{item.label}</span>
-                  </span>
+                  <item.icon size={12} />
+                  {item.label}
                 </button>
               ))}
-            </nav>
-
-            {/* Right Side Tools */}
-            <div className="flex items-center gap-4">
-              {/* Status & Date (Grouped) */}
-              <div className="hidden lg:flex items-center gap-3 pr-4 border-r border-white/[0.08]">
-                {/* Connection Dots */}
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#151D2F]/80 border border-[#26314A]/60 rounded-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
-                  <div className={`w-1.5 h-1.5 rounded-full ${testResults.mikrotik === 'success' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]'} animate-pulse`}></div>
-                  <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Live</span>
-                </div>
-
-                {/* Date Picker */}
-                <div className="relative group/date">
-                  <div className="flex items-center gap-2 bg-[#151D2F]/80 border border-[#26314A]/60 hover:border-blue-500/50 hover:bg-[#1A233A]/80 px-3 py-1.5 rounded-xl transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] cursor-pointer">
-                    <Calendar size={13} className="text-blue-400 group-hover/date:text-blue-300 transition-colors" />
-                    <input
-                      type="date"
-                      value={filterDate}
-                      onChange={handleDateChange}
-                      className="bg-transparent border-none text-[10px] text-white outline-none cursor-pointer font-black uppercase tracking-widest w-[110px]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Icons */}
-              <div className="flex items-center gap-2">
-                {/* Notification */}
-                <div className="relative">
-                  <button
-                    onClick={() => { setShowNotifs(!showNotifs); setShowProfile(false); }}
-                    className={`p-2.5 rounded-xl border transition-all active:scale-95 group relative shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${showNotifs ? 'bg-blue-600/20 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.15)]' : 'bg-[#151D2F]/80 border-[#26314A]/60 hover:border-[#26314A] hover:bg-[#1A233A]'}`}
-                  >
-                    <Bell size={16} className={showNotifs ? 'text-blue-400' : 'text-slate-400 group-hover:text-white transition-colors'} />
-                    {notifList.length > 0 && (
-                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-[#151D2F]"></span>
-                    )}
-                  </button>
-
-                  {/* Redesigned Notification Dropdown */}
-                  {showNotifs && (
-                    <div className="absolute right-0 mt-3 w-80 bg-[#121929]/95 backdrop-blur-3xl border border-white/[0.08] rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                      <div className="p-4 bg-white/[0.03] border-b border-white/[0.05] flex justify-between items-center">
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Activity Center</span>
-                        <button onClick={() => setNotifList([])} className="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors">Clear All</button>
-                      </div>
-                      <div className="max-h-[350px] overflow-y-auto divide-y divide-white/[0.04]">
-                        {notifList?.length > 0 ? notifList.map(n => (
-                          <div key={n.id} className="p-4 hover:bg-white/[0.02] transition-colors cursor-pointer group">
-                            <p className="text-xs text-slate-300 group-hover:text-white mb-1 leading-relaxed">{n?.text || 'System Update'}</p>
-                            <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">{n?.time || 'Just now'}</p>
-                          </div>
-                        )) : (
-                          <div className="py-12 flex flex-col items-center justify-center opacity-30">
-                            <Bell size={24} className="mb-3 text-slate-600" />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">No New Tasks</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Profile */}
-                <div className="relative">
-                  <button
-                    onClick={() => { setShowProfile(!showProfile); setShowNotifs(false); }}
-                    className={`flex items-center gap-2 p-1 rounded-2xl border transition-all active:scale-95 group shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] ${showProfile ? 'bg-blue-600/10 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.1)]' : 'bg-[#151D2F]/80 border-[#26314A]/60 hover:border-[#26314A] hover:bg-[#1A233A]'}`}
-                  >
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg ring-1 ring-white/10 group-hover:shadow-blue-500/20">
-                      <span className="text-white text-[10px] font-black">AD</span>
-                    </div>
-                    <div className="hidden lg:block text-right pr-2">
-                      <p className="text-[9px] font-black text-white uppercase tracking-widest leading-none">Admin</p>
-                      <p className="text-[8px] font-bold text-slate-500 mt-0.5">Master</p>
-                    </div>
-                  </button>
-
-                  {/* Redesigned Profile Menu */}
-                  {showProfile && (
-                    <div className="absolute right-0 mt-3 w-56 bg-[#121929]/95 backdrop-blur-3xl border border-white/[0.08] rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                      <div className="p-5 bg-white/[0.03] border-b border-white/[0.05]">
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-                            <Shield size={18} className="text-blue-400" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-black text-white uppercase tracking-tight">System Admin</p>
-                            <p className="text-[9px] font-bold text-slate-500">Full Access Manager</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-1.5">
-                          <div className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                            <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">Active</span>
-                          </div>
-                          <div className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
-                            <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">V3.0.4</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-2 space-y-1">
-                        <button
-                          onClick={() => { setActiveTab('Settings'); setShowProfile(false); }}
-                          className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl hover:bg-white/[0.04] text-slate-300 hover:text-white transition-all group"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Settings size={14} className="text-slate-500 group-hover:text-blue-400" />
-                            <span className="text-[10px] font-black uppercase tracking-widest">Preferences</span>
-                          </div>
-                          <ChevronRight size={12} className="text-slate-700" />
-                        </button>
-                        <button
-                          onClick={handleLogout}
-                          className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl hover:bg-red-500/10 text-red-400/80 hover:text-red-400 transition-all group"
-                        >
-                          <div className="flex items-center gap-3">
-                            <LogOut size={14} />
-                            <span className="text-[10px] font-black uppercase tracking-widest">Exit Session</span>
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
+        </header>
 
-          {/* Mobile Tab Scroller */}
-          <div className="flex md:hidden items-center gap-1.5 px-4 pb-3 overflow-x-auto bg-[#0D1526]/80 backdrop-blur-xl border-b border-white/[0.05] scrollbar-hide">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black whitespace-nowrap transition-all uppercase tracking-widest ${activeTab === item.id
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                  : 'text-slate-500 bg-white/[0.03]'
-                  }`}
-              >
-                <item.icon size={12} />
-                {item.label}
-              </button>
-            ))}
+        {/* MAIN CONTENT AREA CONTAINER */}
+        <div className="flex-1 flex flex-col pt-[72px] overflow-y-auto overflow-x-hidden relative">
+
+          {/* Ambient background layers inside content area */}
+          <div className="pointer-events-none absolute inset-0 z-0">
+            <div className="absolute top-[-5%] left-[-5%] w-[30%] h-[30%] bg-blue-600/5 rounded-full blur-[100px]" />
+            <div className="absolute bottom-[5%] right-[-5%] w-[25%] h-[25%] bg-indigo-600/5 rounded-full blur-[80px]" />
           </div>
-        </div>
-      </header>
 
-      {/* MAIN CONTENT */}
-      <div className="flex-1 flex flex-col pt-[72px] overflow-y-auto overflow-x-hidden relative">
-        <div className="p-5 lg:p-7 max-w-[1400px] w-full mx-auto">
+          <div className="p-5 lg:p-7 max-w-[1400px] w-full mx-auto relative z-10">
 
 
-          {/* WELCOME BANNER SECTION */}
-          {activeTab === 'Overview' && (
-            <div className="relative mb-10 overflow-hidden rounded-[2.5rem] bg-[#0D1526]/40 border border-white/[0.05] p-1 shadow-2xl">
-              {/* Gradient Backdrop */}
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-indigo-600/10" />
-              <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-blue-500/[0.03] to-transparent" />
+            {/* WELCOME BANNER SECTION */}
+            {activeTab === 'Overview' && (
+              <div className="relative mb-10 overflow-hidden rounded-[2.5rem] bg-[#0D1526]/40 border border-white/[0.05] p-1 shadow-2xl">
+                {/* Gradient Backdrop */}
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-indigo-600/10" />
+                <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-blue-500/[0.03] to-transparent" />
 
-              <div className="relative z-10 p-8 lg:p-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-                <div>
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                      <span className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em]">System Overview</span>
+                <div className="relative z-10 p-8 lg:p-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+                  <div>
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                        <span className="text-[10px] font-black text-blue-300 uppercase tracking-[0.2em]">System Overview</span>
+                      </div>
+                      <ChevronRight size={10} className="text-slate-700" />
+                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
                     </div>
-                    <ChevronRight size={10} className="text-slate-700" />
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+
+                    <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight mb-3">
+                      Halo, <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">Administrator!</span>
+                    </h1>
+                    <p className="text-slate-400 text-sm lg:text-base max-w-xl leading-relaxed font-medium">
+                      Monitor real-time network revenue, sales performance, and active user capacity across all nodes. Sistem Anda berjalan optimal hari ini.
+                    </p>
                   </div>
 
-                  <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight mb-3">
-                    Halo, <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">Administrator!</span>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="bg-black/20 backdrop-blur-xl border border-white/[0.05] rounded-3xl p-5 flex items-center gap-5 pr-8">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                        <Zap size={24} className="text-white" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Router Status</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-black text-lg">ONLINE</span>
+                          <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)] animate-pulse" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleSync}
+                      disabled={isSyncing}
+                      className="group relative px-8 py-5 bg-blue-600 border border-blue-500 rounded-3xl text-xs font-black text-white uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 overflow-hidden active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-cyan-400/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                      <span className="relative flex items-center justify-center gap-3">
+                        {isSyncing ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                        {isSyncing ? 'Syncing...' : 'Sync Now'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PAGE HEADER SECTION (for other tabs) */}
+            {activeTab !== 'Overview' && (
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+                <div>
+                  {/* Breadcrumb */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
+                      <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Dashboard</span>
+                    </div>
+                    <ChevronRight size={10} className="text-slate-700" />
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                      {activeTab}
+                    </span>
+                  </div>
+
+                  {/* Title & Description */}
+                  <h1 className="text-4xl font-black text-white tracking-tight mb-2">
+                    {activeTab === 'Vouchers' && 'Voucher Management'}
+                    {activeTab === 'Customers' && 'User Directory'}
+                    {activeTab === 'Reports' && 'Sales Reports'}
+                    {activeTab === 'Settings' && 'System Settings'}
+                    {activeTab === 'Support' && 'Help & Support'}
+                    {activeTab === 'Access Point' && 'Infrastruktur Jaringan'}
+                    {activeTab === 'Active Logs' && 'Real-time Traffic'}
                   </h1>
-                  <p className="text-slate-400 text-sm lg:text-base max-w-xl leading-relaxed font-medium">
-                    Monitor real-time network revenue, sales performance, and active user capacity across all nodes. Sistem Anda berjalan optimal hari ini.
+                  <p className="text-sm text-slate-500 max-w-lg leading-relaxed font-medium">
+                    {activeTab === 'Vouchers' && 'Generate, track, and manage all hotspot vouchers. View batch history and automated print logs.'}
+                    {activeTab === 'Customers' && 'Analyze user behavior, track session duration, and manage registered permanent customers.'}
+                    {activeTab === 'Reports' && 'Analisis mendalam mengenai pendapatan, tren penjualan, dan performa paket WiFi Anda secara komprehensif.'}
+                    {activeTab === 'Settings' && 'Konfigurasi integrasi API MikroTik, Runchise POS, dan aturan sinkronisasi hotspot otomatis.'}
+                    {activeTab === 'Support' && 'Pusat bantuan teknis, panduan penggunaan, dan informasi pembaruan sistem NetVocher.'}
+                    {activeTab === 'Access Point' && 'Kelola dan pantau semua Access Point (AP) atau Router yang terhubung ke jaringan utama.'}
+                    {activeTab === 'Active Logs' && 'Pantau setiap perangkat yang sedang aktif mengonsumsi data secara langsung.'}
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="bg-black/20 backdrop-blur-xl border border-white/[0.05] rounded-3xl p-5 flex items-center gap-5 pr-8">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                      <Zap size={24} className="text-white" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Router Status</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white font-black text-lg">ONLINE</span>
-                        <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)] animate-pulse" />
-                      </div>
-                    </div>
-                  </div>
-
+                {/* Header Actions */}
+                <div className="flex items-center gap-3">
                   <button
-                    onClick={handleSync}
-                    disabled={isSyncing}
-                    className="group relative px-8 py-5 bg-blue-600 border border-blue-500 rounded-3xl text-xs font-black text-white uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 overflow-hidden active:scale-95 transition-all disabled:opacity-50"
+                    onClick={handleExport}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-[11px] font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all"
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-cyan-400/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
-                    <span className="relative flex items-center justify-center gap-3">
-                      {isSyncing ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                      {isSyncing ? 'Syncing...' : 'Sync Now'}
-                    </span>
+                    <Printer size={14} />
+                    <span>Export Report</span>
+                  </button>
+                  <button
+                    onClick={() => fetchAllData()}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 border border-blue-500 rounded-2xl text-[11px] font-black text-white uppercase tracking-widest hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20 active:scale-95 group"
+                  >
+                    <RefreshCw size={14} className={`${isLoading ? 'animate-spin' : ''}`} />
+                    <span>{isLoading ? 'Loading...' : 'Refresh Page'}</span>
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* PAGE HEADER SECTION (for other tabs) */}
-          {activeTab !== 'Overview' && (
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-              <div>
-                {/* Breadcrumb */}
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
-                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Dashboard</span>
-                  </div>
-                  <ChevronRight size={10} className="text-slate-700" />
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                    {activeTab}
-                  </span>
-                </div>
-
-                {/* Title & Description */}
-                <h1 className="text-4xl font-black text-white tracking-tight mb-2">
-                  {activeTab === 'Vouchers' && 'Voucher Management'}
-                  {activeTab === 'Customers' && 'User Directory'}
-                  {activeTab === 'Reports' && 'Sales Reports'}
-                  {activeTab === 'Settings' && 'System Settings'}
-                  {activeTab === 'Support' && 'Help & Support'}
-                  {activeTab === 'Access Point' && 'Infrastruktur Jaringan'}
-                  {activeTab === 'Active Logs' && 'Real-time Traffic'}
-                </h1>
-                <p className="text-sm text-slate-500 max-w-lg leading-relaxed font-medium">
-                  {activeTab === 'Vouchers' && 'Generate, track, and manage all hotspot vouchers. View batch history and automated print logs.'}
-                  {activeTab === 'Customers' && 'Analyze user behavior, track session duration, and manage registered permanent customers.'}
-                  {activeTab === 'Reports' && 'Analisis mendalam mengenai pendapatan, tren penjualan, dan performa paket WiFi Anda secara komprehensif.'}
-                  {activeTab === 'Settings' && 'Konfigurasi integrasi API MikroTik, Runchise POS, dan aturan sinkronisasi hotspot otomatis.'}
-                  {activeTab === 'Support' && 'Pusat bantuan teknis, panduan penggunaan, dan informasi pembaruan sistem NetVocher.'}
-                  {activeTab === 'Access Point' && 'Kelola dan pantau semua Access Point (AP) atau Router yang terhubung ke jaringan utama.'}
-                  {activeTab === 'Active Logs' && 'Pantau setiap perangkat yang sedang aktif mengonsumsi data secara langsung.'}
-                </p>
-              </div>
-
-              {/* Header Actions */}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleExport}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-[11px] font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all"
-                >
-                  <Printer size={14} />
-                  <span>Export Report</span>
-                </button>
-                <button
-                  onClick={() => fetchAllData()}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 border border-blue-500 rounded-2xl text-[11px] font-black text-white uppercase tracking-widest hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20 active:scale-95 group"
-                >
-                  <RefreshCw size={14} className={`${isLoading ? 'animate-spin' : ''}`} />
-                  <span>{isLoading ? 'Loading...' : 'Refresh Page'}</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'Overview' ? (
-            !stats && isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="h-44 bg-[#0D1526]/50 backdrop-blur-xl border border-white/[0.05] rounded-3xl p-6 flex flex-col justify-between overflow-hidden animate-pulse">
-                    <div className="space-y-3">
-                      <div className="h-3 w-1/3 bg-white/5 rounded-full" />
-                      <div className="h-8 w-2/3 bg-white/10 rounded-xl" />
-                    </div>
-                    <div className="h-12 w-full bg-white/[0.03] rounded-2xl" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <>
-                {/* STATUS SUMMARY CARDS */}
+            {activeTab === 'Overview' ? (
+              !stats && isLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="h-44 bg-[#0D1526]/50 backdrop-blur-xl border border-white/[0.05] rounded-3xl p-6 flex flex-col justify-between overflow-hidden animate-pulse">
+                      <div className="space-y-3">
+                        <div className="h-3 w-1/3 bg-white/5 rounded-full" />
+                        <div className="h-8 w-2/3 bg-white/10 rounded-xl" />
+                      </div>
+                      <div className="h-12 w-full bg-white/[0.03] rounded-2xl" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  {/* STATUS SUMMARY CARDS */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
 
-                  {/* Card 1: Monthly Revenue */}
-                  <div className="relative group overflow-hidden bg-[#0D1526]/40 backdrop-blur-3xl border border-white/[0.06] hover:border-blue-500/30 rounded-3xl p-6 transition-all duration-300">
-                    <div className="absolute top-0 right-0 p-8 text-white/[0.03] pointer-events-none group-hover:text-blue-500/[0.05] transition-colors">
-                      <FileText size={80} />
+                    {/* Card 1: Monthly Revenue */}
+                    <div className="relative group overflow-hidden bg-[#0D1526]/40 backdrop-blur-3xl border border-white/[0.06] hover:border-blue-500/30 rounded-3xl p-6 transition-all duration-300">
+                      <div className="absolute top-0 right-0 p-8 text-white/[0.03] pointer-events-none group-hover:text-blue-500/[0.05] transition-colors">
+                        <FileText size={80} />
+                      </div>
+
+                      <div className="relative z-10 h-full flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Monthly Revenue</p>
+                            <h2 className="text-3xl font-black text-white tracking-tight">
+                              <CountUp end={stats?.revenue?.total || 0} prefix="Rp " />
+                            </h2>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-black rounded-lg">
+                              +{stats?.revenue?.growth || 0}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 h-[60px] relative -mx-2">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={(stats?.revenue?.chartData || []).map((v, i) => ({ n: i, v }))}>
+                              <defs>
+                                <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <Area type="monotone" dataKey="v" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorRev)" />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="relative z-10 h-full flex flex-col justify-between">
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Monthly Revenue</p>
-                          <h2 className="text-3xl font-black text-white tracking-tight">
-                            <CountUp end={stats?.revenue?.total || 0} prefix="Rp " />
-                          </h2>
+                    {/* Card 2: Daily Sales */}
+                    <div className="relative group overflow-hidden bg-[#0D1526]/40 backdrop-blur-3xl border border-white/[0.06] hover:border-indigo-500/30 rounded-3xl p-6 transition-all duration-300">
+                      <div className="absolute top-0 right-0 p-8 text-white/[0.03] pointer-events-none group-hover:text-indigo-500/[0.05] transition-colors">
+                        <Ticket size={80} />
+                      </div>
+
+                      <div className="relative z-10 h-full flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Today Sales</p>
+                            <h2 className="text-3xl font-black text-white tracking-tight">
+                              <CountUp end={stats?.sales?.today || 0} />
+                              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Vouchers</span>
+                            </h2>
+                          </div>
+                          <button onClick={() => setActiveTab('Vouchers')} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors" title="Lihat Detail Vouchers">
+                            <MoreHorizontal size={14} className="text-slate-600" />
+                          </button>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-black rounded-lg">
-                            +{stats?.revenue?.growth || 0}%
+
+                        <div className="mt-4 h-[60px] relative -left-1">
+                          <ResponsiveContainer width="105%" height="100%">
+                            <BarChart data={(stats?.sales?.chartData || []).map((v, i) => ({ n: i, v }))}>
+                              <Bar dataKey="v" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={8} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        <div className="flex justify-between items-center mt-2 px-1">
+                          <span className="text-[8px] font-black text-slate-600 uppercase tracking-tighter">Peak: {Math.max(...(stats?.sales?.chartData || [0]))}</span>
+                          <div className="flex gap-1">
+                            {[1, 2, 3].map(i => <div key={i} className="w-1 h-1 bg-white/10 rounded-full" />)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card 3: Active Users */}
+                    <div className="relative group overflow-hidden bg-[#0D1526]/40 backdrop-blur-3xl border border-white/[0.06] hover:border-cyan-500/30 rounded-3xl p-6 transition-all duration-300">
+                      <div className="absolute top-0 right-0 p-8 text-white/[0.03] pointer-events-none group-hover:text-cyan-500/[0.05] transition-colors">
+                        <Users size={80} />
+                      </div>
+
+                      <div className="relative z-10 h-full flex flex-col justify-between">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Network Load</p>
+                            <h2 className="text-3xl font-black text-white tracking-tight leading-none">
+                              <CountUp end={stats?.users?.active || 0} />
+                              <span className="text-xs text-slate-600 mx-1">/</span>
+                              <span className="text-xs text-slate-600">{stats?.users?.capacity || 100}</span>
+                            </h2>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <svg viewBox="0 0 36 36" className="w-12 h-12 transform -rotate-90">
+                              <path className="text-white/5" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="4" />
+                              <path
+                                className="text-cyan-400"
+                                strokeDasharray={`${((stats?.users?.active || 0) / (stats?.users?.capacity || 1)) * 100}, 100`}
+                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
+                              />
+                            </svg>
+                            <span className="absolute mt-[18px] text-[8px] font-black text-white">{Math.round(((stats?.users?.active || 0) / (stats?.users?.capacity || 1)) * 100)}%</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-8 space-y-2">
+                          <div className="flex justify-between text-[8px] font-black text-slate-500 uppercase tracking-widest">
+                            <span>Utilization Profile</span>
+                          </div>
+                          <div className="w-full bg-black/30 h-1.5 rounded-full overflow-hidden border border-white/[0.05]">
+                            <div
+                              className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full transition-all duration-1000 shadow-[0_0_8px_rgba(34,211,238,0.5)]"
+                              style={{ width: `${((stats?.users?.active || 0) / (stats?.users?.capacity || 1)) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card 4: System Health */}
+                    <div className="relative group overflow-hidden bg-[#0D1526]/40 backdrop-blur-3xl border border-white/[0.06] hover:border-emerald-500/30 rounded-3xl p-6 transition-all duration-300">
+                      <div className="absolute top-0 right-0 p-8 text-white/[0.03] pointer-events-none group-hover:text-emerald-500/[0.05] transition-colors">
+                        <Activity size={80} />
+                      </div>
+
+                      <div className="relative z-10 h-full flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">System Status</p>
+                            <h2 className="text-3xl font-black text-white tracking-tight">
+                              <CountUp end={stats?.system?.health || 100} suffix="%" />
+                            </h2>
+                          </div>
+                          <div className="flex items-center gap-1.5 h-6">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">Optimum</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 h-[40px] w-full relative flex items-center px-1">
+                          <svg width="100%" height="30" viewBox="0 0 200 40" preserveAspectRatio="none">
+                            <path d="M0,20 L30,20 L35,5 L45,35 L55,10 L65,25 L75,15 L80,20 L120,20 L125,5 L135,35 L145,10 L155,25 L165,15 L170,20 L200,20"
+                              fill="none"
+                              stroke={(stats?.system?.health || 100) > 90 ? "#34d399" : "#f59e0b"}
+                              strokeWidth="2.5"
+                              strokeLinejoin="round" />
+                          </svg>
+                        </div>
+
+                        <div className="flex items-center gap-3 mt-4">
+                          <div className="flex-1 space-y-1">
+                            <div className="flex justify-between text-[8px] font-bold text-slate-600 uppercase tracking-widest">
+                              <span>API Sync Latency: {stats?.system?.latency || '24ms'}</span>
+                            </div>
+                            <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                              <div className="h-full bg-emerald-500/40 w-[30%] shadow-[0_0_5px_rgba(16,185,129,0.3)]" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* MIDDLE ROW: Revenue vs Target & Peak Hours */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+
+                    {/* Revenue vs Target */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6 lg:col-span-2 relative">
+                      <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-base font-medium text-white">Revenue vs Target</h3>
+                        <div className="flex gap-4 text-xs">
+                          <span className="flex items-center gap-1.5 text-slate-300">
+                            <span className="w-3 h-3 rounded-sm bg-[#6366f1]"></span>
+                            Actual
+                          </span>
+                          <span className="flex items-center gap-1.5 text-slate-300">
+                            <span className="w-3 h-[2px] rounded-full bg-pink-500"></span>
+                            Target
                           </span>
                         </div>
                       </div>
 
-                      <div className="mt-4 h-[60px] relative -mx-2">
+                      <div className="h-[260px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={(stats?.revenue?.chartData || []).map((v, i) => ({ n: i, v }))}>
+                          <ComposedChart data={stats?.revenueVsTarget || []} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                             <defs>
-                              <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                              <linearGradient id="splitColor" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                               </linearGradient>
                             </defs>
-                            <Area type="monotone" dataKey="v" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorRev)" />
-                          </AreaChart>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#26314A" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} dy={10} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(val) => `Rp ${(val).toLocaleString()}`} />
+                            <Tooltip contentStyle={{ backgroundColor: '#1A233A', borderColor: '#26314A', borderRadius: '8px' }} itemStyle={{ color: '#fff' }} />
+                            <Area type="monotone" dataKey="actual" stroke="#6366f1" strokeWidth={2} fill="url(#splitColor)" />
+                            <Line type="stepAfter" dataKey="target" stroke="#ec4899" strokeWidth={1.5} strokeDasharray="6 6" dot={false} activeDot={false} />
+                          </ComposedChart>
                         </ResponsiveContainer>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Card 2: Daily Sales */}
-                  <div className="relative group overflow-hidden bg-[#0D1526]/40 backdrop-blur-3xl border border-white/[0.06] hover:border-indigo-500/30 rounded-3xl p-6 transition-all duration-300">
-                    <div className="absolute top-0 right-0 p-8 text-white/[0.03] pointer-events-none group-hover:text-indigo-500/[0.05] transition-colors">
-                      <Ticket size={80} />
-                    </div>
-
-                    <div className="relative z-10 h-full flex flex-col justify-between">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Today Sales</p>
-                          <h2 className="text-3xl font-black text-white tracking-tight">
-                            <CountUp end={stats?.sales?.today || 0} />
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-2">Vouchers</span>
-                          </h2>
-                        </div>
-                        <button onClick={() => setActiveTab('Vouchers')} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors" title="Lihat Detail Vouchers">
-                          <MoreHorizontal size={14} className="text-slate-600" />
-                        </button>
-                      </div>
-
-                      <div className="mt-4 h-[60px] relative -left-1">
-                        <ResponsiveContainer width="105%" height="100%">
-                          <BarChart data={(stats?.sales?.chartData || []).map((v, i) => ({ n: i, v }))}>
-                            <Bar dataKey="v" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={8} />
-                          </BarChart>
+                    {/* Peak Hours (Radar) */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6">
+                      <h3 className="text-base font-medium text-white mb-2">Peak Hours</h3>
+                      <div className="h-[250px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart cx="50%" cy="50%" outerRadius="70%" data={Array.from({ length: 24 }, (_, i) => ({ hour: i.toString().padStart(2, '0'), users: (stats?.peakHours || [])[i] || 0 }))}>
+                            <PolarGrid stroke="#26314A" />
+                            <PolarAngleAxis dataKey="hour" tick={{ fill: '#64748b', fontSize: 10 }} />
+                            <PolarRadiusAxis angle={30} domain={[0, Math.max(...(stats?.peakHours || [1]), 5)]} tick={false} axisLine={false} />
+                            <Radar name="Users" dataKey="users" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} strokeWidth={2} />
+                            <Tooltip contentStyle={{ backgroundColor: '#1A233A', borderColor: '#26314A', borderRadius: '8px', fontSize: '12px' }} />
+                          </RadarChart>
                         </ResponsiveContainer>
                       </div>
-
-                      <div className="flex justify-between items-center mt-2 px-1">
-                        <span className="text-[8px] font-black text-slate-600 uppercase tracking-tighter">Peak: {Math.max(...(stats?.sales?.chartData || [0]))}</span>
-                        <div className="flex gap-1">
-                          {[1, 2, 3].map(i => <div key={i} className="w-1 h-1 bg-white/10 rounded-full" />)}
-                        </div>
-                      </div>
                     </div>
+
                   </div>
 
-                  {/* Card 3: Active Users */}
-                  <div className="relative group overflow-hidden bg-[#0D1526]/40 backdrop-blur-3xl border border-white/[0.06] hover:border-cyan-500/30 rounded-3xl p-6 transition-all duration-300">
-                    <div className="absolute top-0 right-0 p-8 text-white/[0.03] pointer-events-none group-hover:text-cyan-500/[0.05] transition-colors">
-                      <Users size={80} />
-                    </div>
+                  {/* BOTTOM ROW: Inventory, Performance, Quick Actions */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
 
-                    <div className="relative z-10 h-full flex flex-col justify-between">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Network Load</p>
-                          <h2 className="text-3xl font-black text-white tracking-tight leading-none">
-                            <CountUp end={stats?.users?.active || 0} />
-                            <span className="text-xs text-slate-600 mx-1">/</span>
-                            <span className="text-xs text-slate-600">{stats?.users?.capacity || 100}</span>
-                          </h2>
-                        </div>
-                        <div className="flex flex-col items-center">
-                          <svg viewBox="0 0 36 36" className="w-12 h-12 transform -rotate-90">
-                            <path className="text-white/5" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="4" />
-                            <path
-                              className="text-cyan-400"
-                              strokeDasharray={`${((stats?.users?.active || 0) / (stats?.users?.capacity || 1)) * 100}, 100`}
-                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                              fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
-                            />
-                          </svg>
-                          <span className="absolute mt-[18px] text-[8px] font-black text-white">{Math.round(((stats?.users?.active || 0) / (stats?.users?.capacity || 1)) * 100)}%</span>
-                        </div>
-                      </div>
+                    {/* Voucher Inventory Matrix */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6">
+                      <h3 className="text-base font-medium text-white mb-5">Voucher Inventory Matrix</h3>
 
-                      <div className="mt-8 space-y-2">
-                        <div className="flex justify-between text-[8px] font-black text-slate-500 uppercase tracking-widest">
-                          <span>Utilization Profile</span>
-                        </div>
-                        <div className="w-full bg-black/30 h-1.5 rounded-full overflow-hidden border border-white/[0.05]">
-                          <div
-                            className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full transition-all duration-1000 shadow-[0_0_8px_rgba(34,211,238,0.5)]"
-                            style={{ width: `${((stats?.users?.active || 0) / (stats?.users?.capacity || 1)) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 4: System Health */}
-                  <div className="relative group overflow-hidden bg-[#0D1526]/40 backdrop-blur-3xl border border-white/[0.06] hover:border-emerald-500/30 rounded-3xl p-6 transition-all duration-300">
-                    <div className="absolute top-0 right-0 p-8 text-white/[0.03] pointer-events-none group-hover:text-emerald-500/[0.05] transition-colors">
-                      <Activity size={80} />
-                    </div>
-
-                    <div className="relative z-10 h-full flex flex-col justify-between">
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">System Status</p>
-                          <h2 className="text-3xl font-black text-white tracking-tight">
-                            <CountUp end={stats?.system?.health || 100} suffix="%" />
-                          </h2>
-                        </div>
-                        <div className="flex items-center gap-1.5 h-6">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">Optimum</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 h-[40px] w-full relative flex items-center px-1">
-                        <svg width="100%" height="30" viewBox="0 0 200 40" preserveAspectRatio="none">
-                          <path d="M0,20 L30,20 L35,5 L45,35 L55,10 L65,25 L75,15 L80,20 L120,20 L125,5 L135,35 L145,10 L155,25 L165,15 L170,20 L200,20"
-                            fill="none"
-                            stroke={(stats?.system?.health || 100) > 90 ? "#34d399" : "#f59e0b"}
-                            strokeWidth="2.5"
-                            strokeLinejoin="round" />
-                        </svg>
-                      </div>
-
-                      <div className="flex items-center gap-3 mt-4">
-                        <div className="flex-1 space-y-1">
-                          <div className="flex justify-between text-[8px] font-bold text-slate-600 uppercase tracking-widest">
-                            <span>API Sync Latency: {stats?.system?.latency || '24ms'}</span>
-                          </div>
-                          <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                            <div className="h-full bg-emerald-500/40 w-[30%] shadow-[0_0_5px_rgba(16,185,129,0.3)]" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* MIDDLE ROW: Revenue vs Target & Peak Hours */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
-
-                  {/* Revenue vs Target */}
-                  <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6 lg:col-span-2 relative">
-                    <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-base font-medium text-white">Revenue vs Target</h3>
-                      <div className="flex gap-4 text-xs">
-                        <span className="flex items-center gap-1.5 text-slate-300">
-                          <span className="w-3 h-3 rounded-sm bg-[#6366f1]"></span>
-                          Actual
-                        </span>
-                        <span className="flex items-center gap-1.5 text-slate-300">
-                          <span className="w-3 h-[2px] rounded-full bg-pink-500"></span>
-                          Target
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="h-[260px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={stats?.revenueVsTarget || []} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id="splitColor" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#26314A" />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} dy={10} />
-                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(val) => `Rp ${(val).toLocaleString()}`} />
-                          <Tooltip contentStyle={{ backgroundColor: '#1A233A', borderColor: '#26314A', borderRadius: '8px' }} itemStyle={{ color: '#fff' }} />
-                          <Area type="monotone" dataKey="actual" stroke="#6366f1" strokeWidth={2} fill="url(#splitColor)" />
-                          <Line type="stepAfter" dataKey="target" stroke="#ec4899" strokeWidth={1.5} strokeDasharray="6 6" dot={false} activeDot={false} />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  {/* Peak Hours (Radar) */}
-                  <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6">
-                    <h3 className="text-base font-medium text-white mb-2">Peak Hours</h3>
-                    <div className="h-[250px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={Array.from({ length: 24 }, (_, i) => ({ hour: i.toString().padStart(2, '0'), users: (stats?.peakHours || [])[i] || 0 }))}>
-                          <PolarGrid stroke="#26314A" />
-                          <PolarAngleAxis dataKey="hour" tick={{ fill: '#64748b', fontSize: 10 }} />
-                          <PolarRadiusAxis angle={30} domain={[0, Math.max(...(stats?.peakHours || [1]), 5)]} tick={false} axisLine={false} />
-                          <Radar name="Users" dataKey="users" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} strokeWidth={2} />
-                          <Tooltip contentStyle={{ backgroundColor: '#1A233A', borderColor: '#26314A', borderRadius: '8px', fontSize: '12px' }} />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* BOTTOM ROW: Inventory, Performance, Quick Actions */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
-
-                  {/* Voucher Inventory Matrix */}
-                  <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6">
-                    <h3 className="text-base font-medium text-white mb-5">Voucher Inventory Matrix</h3>
-
-                    <table className="w-full text-sm text-left">
-                      <thead>
-                        <tr className="text-slate-400">
-                          <th className="font-normal pb-3 w-[25%]">Package</th>
-                          <th className="font-normal pb-3 text-center">Active</th>
-                          <th className="font-normal pb-3 text-center">Used</th>
-                          <th className="font-normal pb-3 text-center">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-center font-medium">
-                        {['1 Hour', '1 Day', '1 Week'].map((pack) => {
-                          const count = vouchers.filter(v => v.pack === pack).length;
-                          const usedCount = vouchers.filter(v => v.pack === pack && v.status === 'Used').length;
-                          const activeCount = count - usedCount;
-
-                          return (
-                            <tr key={pack}>
-                              <td className="py-2 text-left text-slate-300">{pack}</td>
-                              <td className="p-1"><div className={`py-1.5 rounded w-full ${activeCount > 10 ? 'bg-[#22c55e]' : activeCount > 0 ? 'bg-[#eab308]' : 'bg-[#ef4444]'} text-white`}>{activeCount}</div></td>
-                              <td className="p-1"><div className="bg-blue-500/10 text-blue-400 py-1.5 rounded w-full border border-blue-500/20">{usedCount}</div></td>
-                              <td className="p-1"><div className="bg-slate-800 text-slate-500 py-1.5 rounded w-full">{count}</div></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Router Performance Timeline */}
-                  <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6">
-                    <div className="flex justify-between items-baseline mb-4">
-                      <h3 className="text-base font-medium text-white">Router Performance Timeline</h3>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase">Last 24 hours</span>
-                    </div>
-
-                    <div className="space-y-6">
-                      {/* CPU USAGE */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-end">
-                          <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">CPU usage</span>
-                          <span className="text-xs font-black text-blue-400">{(stats?.system?.cpu?.slice(-1)[0] || 0)}%</span>
-                        </div>
-                        <div className="h-12 w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={(stats?.system?.cpu || [0, 0, 0, 0, 0]).map((v, i) => ({ n: i, v }))}>
-                              <defs>
-                                <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                </linearGradient>
-                              </defs>
-                              <Area type="monotone" dataKey="v" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorCpu)" isAnimationActive={true} />
-                            </AreaChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-
-                      {/* RAM USAGE */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-end">
-                          <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">RAM usage</span>
-                          <span className="text-xs font-black text-emerald-400">{(stats?.system?.ram?.slice(-1)[0] || 0)}%</span>
-                        </div>
-                        <div className="h-12 w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={(stats?.system?.ram || [0, 0, 0, 0, 0]).map((v, i) => ({ n: i, v }))}>
-                              <defs>
-                                <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                </linearGradient>
-                              </defs>
-                              <Area type="monotone" dataKey="v" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorRam)" isAnimationActive={true} />
-                            </AreaChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-
-                      {/* CONNECTIONS */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-end">
-                          <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">Connections</span>
-                          <span className="text-xs font-black text-indigo-400">{(stats?.system?.connections?.slice(-1)[0] || 0)} Active</span>
-                        </div>
-                        <div className="h-12 w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={(stats?.system?.connections || [0, 0, 0, 0, 0]).map((v, i) => ({ n: i, v }))}>
-                              <defs>
-                                <linearGradient id="colorConn" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                                </linearGradient>
-                              </defs>
-                              <Area type="monotone" dataKey="v" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#colorConn)" isAnimationActive={true} />
-                            </AreaChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Quick Actions */}
-                  <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6">
-                    <h3 className="text-base font-medium text-white mb-5">Quick Actions</h3>
-                    <div className="grid grid-cols-2 gap-3 h-[180px]">
-                      <button
-                        onClick={() => setShowGenerateModal(true)}
-                        className="flex flex-col items-center justify-center gap-2 bg-[#1A233A] border border-[#2A344D] hover:bg-[#2A344D] hover:border-blue-500/50 rounded-xl transition-all active:scale-95 group shadow-lg shadow-black/10"
-                      >
-                        <Zap size={22} className="text-slate-300 group-hover:text-yellow-400 group-hover:drop-shadow-[0_0_8px_rgba(250,204,21,0.5)] transition-all" />
-                        <span className="text-xs text-slate-300 font-bold">Generate</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPrintSelection(vouchers.slice(0, 10).map(v => v.code)); // pre-select up to 10
-                          setShowPrintModal(true);
-                        }}
-                        className="flex flex-col items-center justify-center gap-2 bg-[#1A233A] border border-[#2A344D] hover:bg-[#2A344D] hover:border-blue-500/50 rounded-xl transition-all active:scale-95 group shadow-lg shadow-black/10"
-                      >
-                        <Printer size={22} className="text-slate-300 group-hover:text-blue-400 transition-all" />
-                        <span className="text-xs text-slate-300 font-bold">Print Batch</span>
-                      </button>
-                      <button
-                        onClick={handleExport}
-                        className="flex flex-col items-center justify-center gap-2 bg-[#1A233A] border border-[#2A344D] hover:bg-[#2A344D] hover:border-blue-500/50 rounded-xl transition-all active:scale-95 group shadow-lg shadow-black/10"
-                      >
-                        <Download size={22} className="text-slate-300 group-hover:text-emerald-400 transition-all" />
-                        <span className="text-xs text-slate-300 font-bold">Export Report</span>
-                      </button>
-                      <button
-                        onClick={handleSync}
-                        disabled={isSyncing}
-                        className={`flex flex-col items-center justify-center gap-2 bg-[#1A233A] border border-[#2A344D] hover:bg-[#2A344D] hover:border-blue-500/50 rounded-xl transition-all active:scale-95 group shadow-lg shadow-black/10 ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        <RefreshCw size={22} className={`text-slate-300 group-hover:text-indigo-400 transition-all ${isSyncing ? 'animate-spin' : ''}`} />
-                        <span className="text-xs text-slate-300 font-bold">{isSyncing ? 'Syncing...' : 'Sync Router'}</span>
-                      </button>
-                    </div>
-                    <div className="mt-4 text-center">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Last Sync: {lastSync}</p>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* BOTTOM MOST: Live Connection Map */}
-                <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6 mb-10 overflow-hidden relative">
-                  <h3 className="text-base font-medium text-white mb-6">Live Connection Map</h3>
-
-                  <div className="h-[200px] w-full flex items-center justify-center relative">
-
-                    {/* Center Router Node */}
-                    <div className="z-10 w-16 h-16 rounded-full bg-[#1A253D] border border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.4)] flex items-center justify-center animate-pulse-dot">
-                      <Server size={24} className="text-blue-400" />
-                    </div>
-
-                    {/* Simulated Nodes & Links */}
-                    <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                      <defs>
-                        <linearGradient id="linkDark" x1="0" y1="0" x2="1" y2="0">
-                          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
-                          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.1" />
-                        </linearGradient>
-                      </defs>
-
-                      {/* Left side connections */}
-                      <path d="M 50% 50% Q 40% 30% 25% 30%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
-                      <circle cx="25%" cy="30%" r="4" fill="#3b82f6" className="animate-pulse" />
-
-                      <path d="M 50% 50% Q 35% 50% 20% 50%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
-                      <circle cx="20%" cy="50%" r="6" fill="#0ea5e9" className="animate-pulse" style={{ animationDelay: '0.2s' }} />
-
-                      <path d="M 50% 50% Q 40% 70% 30% 80%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
-                      <circle cx="30%" cy="80%" r="5" fill="#10b981" className="animate-pulse" style={{ animationDelay: '0.5s' }} />
-
-                      <path d="M 50% 50% Q 45% 20% 35% 15%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
-                      <circle cx="35%" cy="15%" r="3" fill="#3b82f6" className="animate-pulse" style={{ animationDelay: '0.7s' }} />
-
-                      <path d="M 50% 50% Q 35% 65% 25% 65%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
-                      <circle cx="25%" cy="65%" r="4" fill="#0ea5e9" className="animate-pulse" style={{ animationDelay: '0.1s' }} />
-
-                      {/* Right side connections */}
-                      <defs>
-                        <linearGradient id="linkRight" x1="1" y1="0" x2="0" y2="0">
-                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.1" />
-                          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.8" />
-                        </linearGradient>
-                      </defs>
-
-                      <path d="M 50% 50% Q 60% 20% 75% 15%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
-                      <circle cx="75%" cy="15%" r="5" fill="#10b981" className="animate-pulse" style={{ animationDelay: '0.3s' }} />
-
-                      <path d="M 50% 50% Q 70% 40% 85% 35%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
-                      <circle cx="85%" cy="35%" r="4" fill="#0ea5e9" className="animate-pulse" style={{ animationDelay: '0.6s' }} />
-
-                      <path d="M 50% 50% Q 65% 50% 80% 50%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
-                      <circle cx="80%" cy="50%" r="6" fill="#3b82f6" className="animate-pulse" style={{ animationDelay: '0.8s' }} />
-
-                      <path d="M 50% 50% Q 60% 70% 70% 80%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
-                      <circle cx="70%" cy="80%" r="4" fill="#10b981" className="animate-pulse" style={{ animationDelay: '0.4s' }} />
-
-                      <path d="M 50% 50% Q 65% 85% 75% 95%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
-                      <circle cx="75%" cy="95%" r="3" fill="#0ea5e9" className="animate-pulse" style={{ animationDelay: '0.9s' }} />
-                    </svg>
-                  </div>
-                </div>
-
-              </>
-            )
-          ) : activeTab === 'Vouchers' ? (
-            <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl overflow-hidden shadow-2xl">
-              <div className="p-8 border-b border-[#26314A] flex justify-between items-center bg-[#1A233A]/50">
-                <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">Active Vouchers</h2>
-                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Daftar voucher wifi yang masih berlaku</p>
-                </div>
-                <button
-                  onClick={() => setShowGenerateModal(true)}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-2xl transition-all shadow-lg shadow-blue-500/20 flex items-center gap-2 active:scale-95"
-                >
-                  <Plus size={18} />
-                  GENERATE NEW
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-black/20 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] border-b border-[#26314A]">
-                      <th className="px-10 py-6">ID Voucher</th>
-                      <th className="px-10 py-6">Durasi / Paket</th>
-                      <th className="px-10 py-6">Pendapatan</th>
-                      <th className="px-10 py-6 text-center">Tgl Terbit</th>
-                      <th className="px-10 py-6 text-right">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#26314A]/30">
-                    {vouchers.filter(v => v.status === 'Active' || v.status === 'ACTIVE' || !v.status).length > 0 ? (
-                      vouchers
-                        .filter(v => v.status === 'Active' || v.status === 'ACTIVE' || !v.status)
-                        .slice(0, 50)
-                        .map((v, i) => (
-                          <tr key={v.code || i} className="hover:bg-white/[0.02] transition-colors group cursor-pointer" onClick={() => setSelectedVoucher(v)}>
-                            <td className="px-10 py-6">
-                              <div className="flex items-center gap-4">
-                                <div className="p-1.5 bg-white rounded-xl shadow-lg ring-1 ring-black/10">
-                                  <QRCodeSVG value={v.magicLink || v.code || 'NULL'} size={32} />
-                                </div>
-                                <div>
-                                  <p className="font-mono text-xs text-blue-400 font-black tracking-widest leading-none mb-1">{v.code}</p>
-                                  <p className="text-[9px] text-slate-600 font-bold uppercase">ID: {v.details?.orderNo || 'MANUAL'}</p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-10 py-6">
-                              <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                {v.pack || 'STANDARD'}
-                              </span>
-                            </td>
-                            <td className="px-10 py-6 text-xs text-white font-black">{v.price || 'Rp 0'}</td>
-                            <td className="px-10 py-6 text-center text-[11px] text-slate-500 font-bold">{v.date && v.date.includes('T') ? new Date(v.date).toLocaleString('id-ID') : v.date}</td>
-                            <td className="px-10 py-6 text-right">
-                              <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ring-1 ring-inset bg-emerald-500/10 text-emerald-400 ring-emerald-500/20`}>
-                                {v.status || 'Active'}
-                              </span>
-                            </td>
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="text-slate-400">
+                            <th className="font-normal pb-3 w-[25%]">Package</th>
+                            <th className="font-normal pb-3 text-center">Active</th>
+                            <th className="font-normal pb-3 text-center">Used</th>
+                            <th className="font-normal pb-3 text-center">Total</th>
                           </tr>
-                        ))) : (
-                      <tr>
-                        <td colSpan="5" className="px-10 py-32 text-center opacity-30">
-                          <Ticket size={48} className="mx-auto mb-4" />
-                          <p className="text-xs font-black uppercase tracking-widest">Belum Ada Voucher Aktif</p>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                        </thead>
+                        <tbody className="text-center font-medium">
+                          {['1 Hour', '1 Day', '1 Week'].map((pack) => {
+                            const count = vouchers.filter(v => v.pack === pack).length;
+                            const usedCount = vouchers.filter(v => v.pack === pack && v.status === 'Used').length;
+                            const activeCount = count - usedCount;
 
-              {/* VOUCHER DETAIL MODAL / PREVIEW - COMPACTED */}
-              {selectedVoucher && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedVoucher(null)}>
-                  <div className="bg-[#151D2F] border border-[#26314A] rounded-[2.5rem] w-full max-w-[320px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-                    {/* Header: More compact blue section */}
-                    <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-center relative">
-                      <button
-                        onClick={() => setSelectedVoucher(null)}
-                        className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1"
-                      >
-                        <MoreHorizontal size={20} />
-                      </button>
-
-                      <div className="inline-block bg-white p-3 rounded-2xl shadow-xl mb-3">
-                        <QRCodeSVG value={selectedVoucher.magicLink || selectedVoucher.code} size={110} />
-                      </div>
-                      <h3 className="text-white font-black text-xl tracking-tighter leading-none mb-1">{selectedVoucher.code}</h3>
-                      <p className="text-blue-100/60 text-[10px] font-bold uppercase tracking-[0.2em]">{selectedVoucher.pack}</p>
+                            return (
+                              <tr key={pack}>
+                                <td className="py-2 text-left text-slate-300">{pack}</td>
+                                <td className="p-1"><div className={`py-1.5 rounded w-full ${activeCount > 10 ? 'bg-[#22c55e]' : activeCount > 0 ? 'bg-[#eab308]' : 'bg-[#ef4444]'} text-white`}>{activeCount}</div></td>
+                                <td className="p-1"><div className="bg-blue-500/10 text-blue-400 py-1.5 rounded w-full border border-blue-500/20">{usedCount}</div></td>
+                                <td className="p-1"><div className="bg-slate-800 text-slate-500 py-1.5 rounded w-full">{count}</div></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
 
-                    {/* Body: Reduced padding and component sizes */}
-                    <div className="p-6 space-y-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 bg-[#0B1320] rounded-xl border border-[#26314A]">
-                          <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Status</p>
-                          <p className={`font-bold text-[12px] ${selectedVoucher.status === 'Active' ? 'text-emerald-400' : 'text-blue-400'}`}>{selectedVoucher.status || 'Active'}</p>
-                        </div>
-                        <div className="p-3 bg-[#0B1320] rounded-xl border border-[#26314A]">
-                          <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Price</p>
-                          <p className="text-white font-bold text-[12px]">{selectedVoucher.price}</p>
-                        </div>
+                    {/* Router Performance Timeline */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6">
+                      <div className="flex justify-between items-baseline mb-4">
+                        <h3 className="text-base font-medium text-white">Router Performance Timeline</h3>
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">Last 24 hours</span>
                       </div>
 
-                      {selectedVoucher.details ? (
-                        <div className="p-4 bg-white/5 rounded-2xl border border-white/10 space-y-2">
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-slate-500 font-bold uppercase tracking-widest">Order #</span>
-                            <span className="text-slate-300 font-mono">{selectedVoucher.details.orderNo}</span>
-                          </div>
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-slate-500 font-bold uppercase tracking-widest">Customer</span>
-                            <span className="text-slate-300">{selectedVoucher.details.customer}</span>
-                          </div>
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-slate-500 font-bold uppercase tracking-widest">Payment</span>
-                            <span className="text-slate-300">{selectedVoucher.details.payment}</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-3 bg-blue-500/5 rounded-xl border border-blue-500/10">
-                          <div className="flex items-center gap-1.5 mb-1.5">
-                            <Shield size={12} className="text-blue-400" />
-                            <p className="text-[9px] text-blue-400 font-bold uppercase tracking-wider">Seamless Auto-Login</p>
-                          </div>
-                          <p className="text-[10px] text-slate-400 leading-tight">
-                            Scan and login automatically. MAC binding secured.
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="flex gap-2">
-                        <button
-                          className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
-                          onClick={() => window.print()}
-                        >
-                          <Printer size={16} />
-                          Print
-                        </button>
-                        <button className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl transition-all active:scale-95">
-                          Download
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-
-              <div className="p-4 text-center bg-[#1A233A]/20">
-                <button className="text-xs text-slate-500 hover:text-white transition-colors font-medium">View all vouchers →</button>
-              </div>
-            </div>
-          ) : activeTab === 'Settings' ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg transition-colors ${testResults.mikrotik === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/10 text-blue-400'}`}>
-                      <Server size={20} />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white">MikroTik Router Config</h2>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Hardware & Network Interface</p>
-                    </div>
-                  </div>
-                  <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-tighter transition-all duration-500 ${testResults.mikrotik === 'success' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-[#0B1320] text-slate-500 border border-[#26314A]'}`}>
-                    <div className={`w-2 h-2 rounded-full ${testResults.mikrotik === 'success' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`}></div>
-                    {testResults.mikrotik === 'success' ? 'Live & Connected' : 'Offline / Pending'}
-                  </div>
-                </div>
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Router Address</label>
-                    <input
-                      type="text"
-                      value={mtConfig.ip}
-                      onChange={(e) => setMtConfig({ ...mtConfig, ip: e.target.value })}
-                      className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none transition-all"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Username</label>
-                      <input
-                        type="text"
-                        value={mtConfig.user}
-                        onChange={(e) => setMtConfig({ ...mtConfig, user: e.target.value })}
-                        className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Password</label>
-                      <input
-                        type="password"
-                        placeholder="••••••••"
-                        value={mtConfig.pass}
-                        onChange={(e) => setMtConfig({ ...mtConfig, pass: e.target.value })}
-                        className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-blue-500 outline-none"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={handleTestMikroTik}
-                      disabled={isTestingMikroTik}
-                      className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                    >
-                      {isTestingMikroTik ? <RefreshCw size={18} className="animate-spin" /> : <Activity size={18} />}
-                      Test Network
-                    </button>
-                    <button
-                      onClick={handleSaveMikroTik}
-                      className="flex-[2] py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98]"
-                    >
-                      Save Config
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg transition-colors ${testResults.runchise === 'success' ? 'bg-pink-500/20 text-pink-400' : 'bg-pink-500/10 text-pink-400'}`}>
-                      <Zap size={20} />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white">Runchise POS Integration</h2>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Webhook & API Key System</p>
-                    </div>
-                  </div>
-                  <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-tighter transition-all duration-500 ${testResults.runchise === 'success' ? 'bg-pink-500/20 text-pink-400 border border-pink-500/30' : 'bg-[#0B1320] text-slate-500 border border-[#26314A]'}`}>
-                    <div className={`w-2 h-2 rounded-full ${testResults.runchise === 'success' ? 'bg-pink-400 animate-pulse' : 'bg-slate-600'}`}></div>
-                    {testResults.runchise === 'success' ? 'API Valid & Authorized' : 'Waiting for Auth'}
-                  </div>
-                </div>
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">API Key</label>
-                    <input
-                      type="text"
-                      placeholder="sk_live_..."
-                      value={rcConfig.apiKey}
-                      onChange={(e) => setRcConfig({ ...rcConfig, apiKey: e.target.value })}
-                      className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-pink-500 outline-none transition-all"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Default Pack (Beli Makanan/Tiket)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 1 Hour"
-                        value={rcConfig.defaultPack}
-                        onChange={(e) => setRcConfig({ ...rcConfig, defaultPack: e.target.value })}
-                        className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-pink-500 outline-none transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Default Profile (MikroTik)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. NV-1H"
-                        value={rcConfig.defaultProfile}
-                        onChange={(e) => setRcConfig({ ...rcConfig, defaultProfile: e.target.value })}
-                        className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-pink-500 outline-none transition-all"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Max Shared Devices (Per Voucher)</label>
-                    <input
-                      type="number"
-                      placeholder="e.g. 1"
-                      min="1"
-                      max="10"
-                      value={rcConfig.defaultSharedUsers}
-                      onChange={(e) => setRcConfig({ ...rcConfig, defaultSharedUsers: e.target.value })}
-                      className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-pink-500 outline-none transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Webhook URL</label>
-                    <input type="text" value="https://api.netvocher.com/v1/webhook" readOnly className="w-full bg-[#0B1320]/50 border border-[#26314A] rounded-xl px-4 py-3 text-sm text-slate-500 cursor-not-allowed" />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button
-                      onClick={handleTestRunchise}
-                      disabled={isTestingRunchise}
-                      className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                    >
-                      {isTestingRunchise ? <RefreshCw size={18} className="animate-spin" /> : <Activity size={18} />}
-                      Test API
-                    </button>
-                    <button
-                      onClick={handleSaveRunchise}
-                      className="flex-[2] py-4 bg-[#E11D48] hover:bg-[#F43F5E] text-white font-bold rounded-xl transition-all shadow-lg shadow-pink-500/20 active:scale-[0.98]"
-                    >
-                      Apply Reset
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* VOUCHER MAPPING RULES */}
-              <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl">
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg">
-                    <Ticket size={20} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-white">Pengaturan Otomatis (Mapping)</h2>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Atur paket berdasarkan nama item di Runchise</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {rcConfig.mapping?.map((map, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-3 items-end bg-[#0B1320] p-4 rounded-xl border border-[#26314A]">
-                      <div className="col-span-3">
-                        <label className="text-[9px] font-bold text-slate-500 uppercase mb-1 block">Kata Kunci Item</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. jam, hour"
-                          value={map.keyword}
-                          onChange={(e) => updateMapping(idx, 'keyword', e.target.value)}
-                          className="w-full bg-[#151D2F] border border-[#26314A] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                        />
-                      </div>
-                      <div className="col-span-3">
-                        <label className="text-[9px] font-bold text-slate-500 uppercase mb-1 block">Nama Paket (UI)</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 1 Hour"
-                          value={map.pack}
-                          onChange={(e) => updateMapping(idx, 'pack', e.target.value)}
-                          className="w-full bg-[#151D2F] border border-[#26314A] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                        />
-                      </div>
-                      <div className="col-span-3">
-                        <label className="text-[9px] font-bold text-slate-500 uppercase mb-1 block">MikroTik Profile</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. NV-1H"
-                          value={map.profile}
-                          onChange={(e) => updateMapping(idx, 'profile', e.target.value)}
-                          className="w-full bg-[#151D2F] border border-[#26314A] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <label className="text-[9px] font-bold text-slate-500 uppercase mb-1 block">Limit Kec.</label>
-                        <input
-                          type="text"
-                          placeholder="2M/2M"
-                          value={map.rateLimit}
-                          onChange={(e) => updateMapping(idx, 'rateLimit', e.target.value)}
-                          className="w-full bg-[#151D2F] border border-[#26314A] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                        />
-                      </div>
-                      <div className="col-span-1">
-                        <button onClick={() => removeMapping(idx)} className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
-                          <XCircle size={18} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  <button
-                    onClick={addMapping}
-                    className="w-full py-3 border border-dashed border-[#26314A] hover:border-blue-500/50 rounded-xl text-xs font-bold text-slate-500 hover:text-blue-400 transition-all flex items-center justify-center gap-2"
-                  >
-                    + Tambah Aturan Mapping Baru
-                  </button>
-
-                  <button
-                    onClick={handleSaveRunchise}
-                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-lg active:scale-95 mt-4"
-                  >
-                    Simpan Seluruh Sinkronisasi
-                  </button>
-                </div>
-              </div>
-
-              {/* EMERGENCY ORDER SYNC */}
-              <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl">
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg">
-                    <RefreshCw size={20} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-white">Validasi Order Manual (Darurat)</h2>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Gunakan jika webhook otomatis gagal/error</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4 bg-amber-500/5 border border-amber-500/10 p-6 rounded-2xl relative overflow-hidden">
-                  <div className="relative z-10 space-y-4">
-                    <div>
-                      <label className="text-[10px] font-bold text-amber-400/70 uppercase mb-1.5 block">Order ID Runchise</label>
-                      <input
-                        type="text"
-                        placeholder="Masukkan Order ID (e.g. ORD-123...)"
-                        value={manualSyncData.orderId}
-                        onChange={(e) => setManualSyncData({ ...manualSyncData, orderId: e.target.value })}
-                        className="w-full bg-[#0B1320] border border-amber-500/20 rounded-xl px-4 py-3 text-sm text-white focus:border-amber-500 outline-none"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[10px] font-bold text-amber-400/70 uppercase mb-1.5 block">Customer Name</label>
-                        <input
-                          type="text"
-                          placeholder="Guest"
-                          value={manualSyncData.customer}
-                          onChange={(e) => setManualSyncData({ ...manualSyncData, customer: e.target.value })}
-                          className="w-full bg-[#0B1320] border border-amber-500/20 rounded-xl px-4 py-3 text-sm text-white outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-amber-400/70 uppercase mb-1.5 block">Keyword Item</label>
-                        <select
-                          value={manualSyncData.packKeyword}
-                          onChange={(e) => setManualSyncData({ ...manualSyncData, packKeyword: e.target.value })}
-                          className="w-full bg-[#0B1320] border border-amber-500/20 rounded-xl px-4 py-3 text-sm text-white outline-none"
-                        >
-                          {rcConfig.mapping?.map(m => (
-                            <option key={m.keyword} value={m.keyword}>{m.pack} ({m.profile})</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleManualSync}
-                      disabled={isSyncingOrder}
-                      className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-[#0B1320] font-black rounded-xl transition-all shadow-lg shadow-amber-500/10 flex items-center justify-center gap-2 active:scale-[0.98]"
-                    >
-                      {isSyncingOrder ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle size={20} />}
-                      VALIDASI & GENERATE SEKARANG
-                    </button>
-                  </div>
-                  <div className="absolute top-0 right-0 p-8 opacity-5">
-                    <AlertTriangle size={120} />
-                  </div>
-                </div>
-              </div>
-
-              {/* FULL-WIDTH AUTO PROVISIONING CARD */}
-              <div className="lg:col-span-2 bg-gradient-to-br from-[#151D2F] to-[#1A253E] border border-[#26314A] rounded-2xl p-8 shadow-xl">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500/10 rounded-lg"><Zap size={20} className="text-emerald-400" /></div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white">One-Click Router Provisioning</h2>
-                      <p className="text-xs text-slate-500 mt-0.5">Kirim konfigurasi otomatis ke MikroTik Anda dalam 1 klik</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                  <div className="p-4 bg-[#0B1320] rounded-xl border border-[#26314A] flex items-start gap-3">
-                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-bold text-white">Enable API Service</p>
-                      <p className="text-[10px] text-slate-500 mt-1">Mengaktifkan layanan API di port 8728 secara otomatis</p>
-                    </div>
-                  </div>
-                  <div className="p-4 bg-[#0B1320] rounded-xl border border-[#26314A] flex items-start gap-3">
-                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-bold text-white">Create Hotspot Profile</p>
-                      <p className="text-[10px] text-slate-500 mt-1">Membuat profil "NetVocher-Profile" dengan batas 1 user per voucher</p>
-                    </div>
-                  </div>
-                  <div className="p-4 bg-[#0B1320] rounded-xl border border-[#26314A] flex items-start gap-3">
-                    <CheckCircle size={18} className="text-emerald-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-bold text-white">Auto-Create Vouchers</p>
-                      <p className="text-[10px] text-slate-500 mt-1">Setiap pembayaran Runchise → hotspot user otomatis terdaftar di router</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={handleSetupRouter}
-                    disabled={isProvisioning}
-                    className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98] flex items-center justify-center gap-3 disabled:opacity-50"
-                  >
-                    {isProvisioning ? <RefreshCw size={20} className="animate-spin" /> : <Zap size={20} />}
-                    {isProvisioning ? 'Sending Configuration...' : 'Setup Router Otomatis'}
-                  </button>
-                  <div className="flex items-start gap-2 p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl flex-1">
-                    <AlertTriangle size={16} className="text-amber-400 mt-0.5 flex-shrink-0" />
-                    <p className="text-[10px] text-amber-300/70 leading-relaxed">
-                      <strong className="text-amber-400">Perhatian:</strong> Pastikan IP, Username dan Password MikroTik sudah benar dan tersimpan sebelum menekan tombol ini. Fitur API di MikroTik harus sudah aktif.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : activeTab === 'Active Logs' ? (
-            <div className="space-y-6 animate-in fade-in duration-500">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">Log User Aktif</h2>
-                  <p className="text-slate-500 text-sm font-medium">Monitoring perangkat yang sedang terhubung ke WiFi secara real-time</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                    Live Monitoring
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-[#151D2F] border border-[#26314A] rounded-3xl overflow-hidden shadow-2xl">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-[#1A233A]/50 text-slate-500 font-bold text-[10px] uppercase tracking-[0.15em] border-b border-[#26314A]">
-                        <th className="px-6 py-5">User / Voucher</th>
-                        <th className="px-6 py-5">IP Address</th>
-                        <th className="px-6 py-5">Mac Address</th>
-                        <th className="px-6 py-5">Uptime</th>
-                        <th className="px-6 py-5">Bytes Out</th>
-                        <th className="px-6 py-5 text-right">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#26314A]/50">
-                      {activeUsers.length > 0 ? activeUsers.map((user, idx) => (
-                        <tr key={idx} className="hover:bg-white/5 transition-colors group">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center text-blue-400">
-                                <Users size={16} />
-                              </div>
-                              <div>
-                                <p className="font-mono text-sm text-white font-bold tracking-wider">{user.user}</p>
-                                <p className="text-[10px] text-slate-500 font-medium">Server: {user.server}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-slate-300 text-sm font-medium">{user.address}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-slate-500 text-[11px] font-mono tracking-wider">{user['mac-address']}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <RefreshCw size={12} className="text-emerald-400 animate-spin-slow" />
-                              <span className="text-emerald-400 text-sm font-bold">{user.uptime}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-slate-400 text-[11px] font-bold">{(parseInt(user['bytes-out']) / 1024 / 1024).toFixed(2)} MB</span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 rounded-full text-[10px] font-black uppercase tracking-tighter">
-                              Connected
-                            </span>
-                          </td>
-                        </tr>
-                      )) : (
-                        <tr>
-                          <td colSpan="6" className="px-6 py-20 text-center">
-                            <div className="flex flex-col items-center gap-3 opacity-30">
-                              <WifiOff size={48} className="text-slate-500" />
-                              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Tidak ada user yang sedang aktif</p>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          ) : activeTab === 'Access Point' ? (
-            <div className="space-y-6 animate-in slide-in-from-right duration-500">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">Koneksi AP / Router</h2>
-                  <p className="text-slate-500 text-sm font-medium">Monitoring Access Point dan Router tambahan yang terhubung ke MikroTik</p>
-                </div>
-                <button
-                  onClick={() => setShowInfraModal(!showInfraModal)}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center gap-2"
-                >
-                  <Plus size={20} />
-                  Tambah Unit Manual
-                </button>
-              </div>
-
-              {/* MANUAL AP CONFIGURATION FORM (Collapsible) */}
-              {showInfraModal && (
-                <div className="bg-[#151D2F] border border-blue-500/30 rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 duration-200">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg"><Settings size={20} /></div>
-                    <h3 className="text-lg font-bold text-white">Konfigurasi Unit Baru</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Nama / Nama Area</label>
-                      <input
-                        type="text"
-                        placeholder="Ex: AP Lobby, AP Lantai 2"
-                        value={editingAP.name}
-                        onChange={(e) => setEditingAP({ ...editingAP, name: e.target.value })}
-                        className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">IP Address Router</label>
-                      <input
-                        type="text"
-                        placeholder="Ex: 192.168.88.10"
-                        value={editingAP.ip}
-                        onChange={(e) => setEditingAP({ ...editingAP, ip: e.target.value })}
-                        className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Port Ether (MikroTik)</label>
-                      <select
-                        value={editingAP.port}
-                        onChange={(e) => setEditingAP({ ...editingAP, port: e.target.value })}
-                        className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none appearance-none"
-                      >
-                        <option value="">Pilih Port (Otomatis)</option>
-                        {mtInterfaces.map(iface => (
-                          <option key={iface['.id']} value={iface.name}>{iface.name} ({iface.type})</option>
-                        ))}
-                        {mtInterfaces.length === 0 && (
-                          <>
-                            {[...Array(24)].map((_, i) => (
-                              <option key={i} value={`ether${i + 1}`}>Ether {i + 1}</option>
-                            ))}
-                            <option value="wlan1">WLAN 1 (Internal)</option>
-                          </>
-                        )}
-                      </select>
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        onClick={addManualAP}
-                        disabled={!editingAP.name || !editingAP.ip}
-                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition-all"
-                      >
-                        Simpan Perangkat
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* MANUAL INFRASTRUCTURE LIST */}
-              {infraConfig.accessPoints?.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Infrastruktur Terdaftar</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {infraConfig.accessPoints.map((ap) => (
-                      <div key={ap.id} className="bg-gradient-to-br from-[#1A253A] to-[#151D2F] border border-blue-500/20 rounded-3xl p-6 relative overflow-hidden group">
-                        <div className="absolute top-4 right-4 z-20">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === ap.id ? null : ap.id) }}
-                            className="p-2 text-slate-500 hover:text-white bg-[#0B1320]/50 rounded-lg backdrop-blur-sm transition-all"
-                          >
-                            <MoreHorizontal size={18} />
-                          </button>
-                          {activeMenuId === ap.id && (
-                            <div className="absolute top-full right-0 mt-2 w-32 bg-[#1A233A] border border-[#26314A] rounded-xl shadow-2xl overflow-hidden py-1 z-30">
-                              <button onClick={() => handleEditManualAP(ap)} className="w-full px-4 py-2 text-left text-xs text-white hover:bg-blue-600 transition-colors flex items-center gap-2">
-                                <Settings size={12} /> Edit
-                              </button>
-                              <button onClick={() => removeManualAP(ap.id)} className="w-full px-4 py-2 text-left text-xs text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2">
-                                <XCircle size={12} /> Hapus
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center mb-4">
-                          <Server size={24} />
-                        </div>
-                        <h4 className="text-white font-bold text-lg mb-1">{ap.name}</h4>
+                      <div className="space-y-6">
+                        {/* CPU USAGE */}
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-slate-500">IP ADDRESS</span>
-                            <span className="text-blue-400 font-bold">{ap.ip}</span>
+                          <div className="flex justify-between items-end">
+                            <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">CPU usage</span>
+                            <span className="text-xs font-black text-blue-400">{(stats?.system?.cpu?.slice(-1)[0] || 0)}%</span>
                           </div>
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-slate-500">MIKROTIK PORT</span>
-                            <span className="text-emerald-400 font-black uppercase">{ap.port || 'N/A'}</span>
+                          <div className="h-12 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={(stats?.system?.cpu || [0, 0, 0, 0, 0]).map((v, i) => ({ n: i, v }))}>
+                                <defs>
+                                  <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                  </linearGradient>
+                                </defs>
+                                <Area type="monotone" dataKey="v" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorCpu)" isAnimationActive={true} />
+                              </AreaChart>
+                            </ResponsiveContainer>
                           </div>
                         </div>
-                        <div className="mt-4 pt-4 border-t border-white/5 flex gap-2">
-                          <span className="px-2 py-1 bg-blue-600/10 text-blue-400 rounded text-[9px] font-bold uppercase">Manual Config</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              <div className="pt-8">
-                <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Deteksi Otomatis (Live)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {dhcpLeases.length > 0 ? dhcpLeases.map((lease, idx) => (
-                    <div key={idx} className="bg-[#151D2F] border border-[#26314A] rounded-3xl p-6 hover:border-blue-500/30 transition-all group relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                        <Wifi size={80} />
-                      </div>
-                      <div className="flex items-center gap-4 mb-4 relative z-10">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${lease.status === 'bound' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-500/10 text-slate-400'}`}>
-                          <Server size={24} />
-                        </div>
-                        <div>
-                          <h3 className="text-white font-bold text-lg">{lease['host-name'] || 'Unknown Device'}</h3>
-                          <p className="text-xs text-slate-500 font-medium">Status: <span className={lease.status === 'bound' ? 'text-emerald-400' : 'text-amber-400'}>{lease.status}</span></p>
-                        </div>
-                        <div className="ml-auto relative">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === lease.activeId ? null : lease.activeId) }}
-                            className="p-2 text-slate-500 hover:text-white"
-                          >
-                            <MoreHorizontal size={18} />
-                          </button>
-                          {activeMenuId === lease.activeId && (
-                            <div className="absolute top-full right-0 mt-2 w-48 bg-[#1A233A] border border-[#26314A] rounded-xl shadow-2xl overflow-hidden py-1 z-30">
-                              <button onClick={() => handleRegisterAutoAP(lease)} className="w-full px-4 py-2 text-left text-xs text-blue-400 hover:bg-blue-600 hover:text-white transition-colors flex items-center gap-2">
-                                <Plus size={12} /> Daftarkan Unit
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="space-y-3 relative z-10">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-slate-500">IP Address</span>
-                          <span className="text-white font-mono font-bold bg-[#0B1320] px-2 py-1 rounded">{lease.address}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-slate-500">MAC Address</span>
-                          <span className="text-slate-400 font-mono">{lease['mac-address']}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-slate-500">Expires In</span>
-                          <span className="text-blue-400 font-bold">{lease['expires-after'] || 'N/A'}</span>
-                        </div>
-                        {lease.comment && (
-                          <div className="mt-4 pt-4 border-t border-[#26314A]">
-                            <p className="text-[10px] text-slate-500 uppercase font-black mb-1">Catatan</p>
-                            <p className="text-xs text-slate-300 italic">{lease.comment}</p>
+                        {/* RAM USAGE */}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-end">
+                            <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">RAM usage</span>
+                            <span className="text-xs font-black text-emerald-400">{(stats?.system?.ram?.slice(-1)[0] || 0)}%</span>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="col-span-full py-20 bg-[#151D2F] border border-[#26314A] border-dashed rounded-3xl text-center">
-                      <div className="inline-flex w-16 h-16 rounded-full bg-slate-800 items-center justify-center mb-4">
-                        <WifiOff size={32} className="text-slate-500" />
-                      </div>
-                      <h3 className="text-white font-bold text-lg">Tidak Ada AP Terdeteksi</h3>
-                      <p className="text-slate-500 text-sm">Pastikan Access Point atau Router sudah terhubung ke Port LAN MikroTik.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : activeTab === 'Reports' ? (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-700">
-              {/* Report Header Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Total Pendapatan</p>
-                  <h3 className="text-3xl font-black text-white tracking-tight mb-2">
-                    <CountUp end={stats?.revenue?.total || 0} prefix="Rp " />
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-emerald-400 text-[10px] font-black tracking-widest">+12.5%</span>
-                    <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Dari Bulan Lalu</span>
-                  </div>
-                </div>
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Voucher Terjual</p>
-                  <h3 className="text-3xl font-black text-white tracking-tight mb-2">
-                    <CountUp end={vouchers.length || 0} />
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-blue-400 text-[10px] font-black tracking-widest">+42 Unit</span>
-                    <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Hari Ini</span>
-                  </div>
-                </div>
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Rata-rata Order</p>
-                  <h3 className="text-3xl font-black text-white tracking-tight mb-2">
-                    <CountUp end={Math.round((stats?.revenue?.total || 0) / (vouchers.length || 1))} prefix="Rp " />
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Per Transaksi</span>
-                  </div>
-                </div>
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Efisiensi Jaringan</p>
-                  <h3 className="text-3xl font-black text-white tracking-tight mb-2">
-                    <CountUp end={98.8} decimals={1} suffix="%" />
-                  </h3>
-                  <div className="flex items-center gap-2 text-emerald-400">
-                    <CheckCircle size={12} />
-                    <span className="text-[10px] font-black tracking-widest uppercase">Excellent</span>
-                  </div>
-                </div>
-              </div>
+                          <div className="h-12 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={(stats?.system?.ram || [0, 0, 0, 0, 0]).map((v, i) => ({ n: i, v }))}>
+                                <defs>
+                                  <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                  </linearGradient>
+                                </defs>
+                                <Area type="monotone" dataKey="v" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorRam)" isAnimationActive={true} />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
 
-              {/* Main Charts Row */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Revenue Trend Chart */}
-                <div className="lg:col-span-2 bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] p-8 lg:p-10 shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-10 opacity-5">
-                    <FileText size={120} />
-                  </div>
-                  <div className="flex items-center justify-between mb-10 relative z-10">
-                    <div>
-                      <h2 className="text-2xl font-black text-white tracking-tight mb-1">Tren Pendapatan Mingguan</h2>
-                      <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Analisis performa 7 hari terakhir</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black uppercase tracking-widest">
-                        Actual Revenue
+                        {/* CONNECTIONS */}
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-end">
+                            <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">Connections</span>
+                            <span className="text-xs font-black text-indigo-400">{(stats?.system?.connections?.slice(-1)[0] || 0)} Active</span>
+                          </div>
+                          <div className="h-12 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={(stats?.system?.connections || [0, 0, 0, 0, 0]).map((v, i) => ({ n: i, v }))}>
+                                <defs>
+                                  <linearGradient id="colorConn" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                  </linearGradient>
+                                </defs>
+                                <Area type="monotone" dataKey="v" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#colorConn)" isAnimationActive={true} />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Quick Actions */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6">
+                      <h3 className="text-base font-medium text-white mb-5">Quick Actions</h3>
+                      <div className="grid grid-cols-2 gap-3 h-[180px]">
+                        <button
+                          onClick={() => setShowGenerateModal(true)}
+                          className="flex flex-col items-center justify-center gap-2 bg-[#1A233A] border border-[#2A344D] hover:bg-[#2A344D] hover:border-blue-500/50 rounded-xl transition-all active:scale-95 group shadow-lg shadow-black/10"
+                        >
+                          <Zap size={22} className="text-slate-300 group-hover:text-yellow-400 group-hover:drop-shadow-[0_0_8px_rgba(250,204,21,0.5)] transition-all" />
+                          <span className="text-xs text-slate-300 font-bold">Generate</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setPrintSelection(vouchers.slice(0, 10).map(v => v.code)); // pre-select up to 10
+                            setShowPrintModal(true);
+                          }}
+                          className="flex flex-col items-center justify-center gap-2 bg-[#1A233A] border border-[#2A344D] hover:bg-[#2A344D] hover:border-blue-500/50 rounded-xl transition-all active:scale-95 group shadow-lg shadow-black/10"
+                        >
+                          <Printer size={22} className="text-slate-300 group-hover:text-blue-400 transition-all" />
+                          <span className="text-xs text-slate-300 font-bold">Print Batch</span>
+                        </button>
+                        <button
+                          onClick={handleExport}
+                          className="flex flex-col items-center justify-center gap-2 bg-[#1A233A] border border-[#2A344D] hover:bg-[#2A344D] hover:border-blue-500/50 rounded-xl transition-all active:scale-95 group shadow-lg shadow-black/10"
+                        >
+                          <Download size={22} className="text-slate-300 group-hover:text-emerald-400 transition-all" />
+                          <span className="text-xs text-slate-300 font-bold">Export Report</span>
+                        </button>
+                        <button
+                          onClick={handleSync}
+                          disabled={isSyncing}
+                          className={`flex flex-col items-center justify-center gap-2 bg-[#1A233A] border border-[#2A344D] hover:bg-[#2A344D] hover:border-blue-500/50 rounded-xl transition-all active:scale-95 group shadow-lg shadow-black/10 ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <RefreshCw size={22} className={`text-slate-300 group-hover:text-indigo-400 transition-all ${isSyncing ? 'animate-spin' : ''}`} />
+                          <span className="text-xs text-slate-300 font-bold">{isSyncing ? 'Syncing...' : 'Sync Router'}</span>
+                        </button>
+                      </div>
+                      <div className="mt-4 text-center">
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Last Sync: {lastSync}</p>
+                      </div>
+                    </div>
+
                   </div>
 
-                  <div className="h-[350px] w-full relative z-10">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={stats?.revenueVsTarget || []}>
+                  {/* BOTTOM MOST: Live Connection Map */}
+                  <div className="bg-[#151D2F] border border-[#26314A] rounded-xl p-6 mb-10 overflow-hidden relative">
+                    <h3 className="text-base font-medium text-white mb-6">Live Connection Map</h3>
+
+                    <div className="h-[200px] w-full flex items-center justify-center relative">
+
+                      {/* Center Router Node */}
+                      <div className="z-10 w-16 h-16 rounded-full bg-[#1A253D] border border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.4)] flex items-center justify-center animate-pulse-dot">
+                        <Server size={24} className="text-blue-400" />
+                      </div>
+
+                      {/* Simulated Nodes & Links */}
+                      <svg className="absolute inset-0 w-full h-full pointer-events-none">
                         <defs>
-                          <linearGradient id="revenueReport" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                          <linearGradient id="linkDark" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
+                            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.1" />
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#26314A" />
-                        <XAxis
-                          dataKey="name"
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 'bold' }}
-                          dy={15}
-                        />
-                        <YAxis
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 'bold' }}
-                          tickFormatter={(val) => `Rp ${val / 1000}k`}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#0D1526',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            borderRadius: '16px',
-                            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)'
-                          }}
-                          itemStyle={{ color: '#fff' }}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="actual"
-                          stroke="#3b82f6"
-                          strokeWidth={4}
-                          fill="url(#revenueReport)"
-                          animationDuration={2000}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
 
-                {/* Package Distribution Map */}
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] p-8 lg:p-10 shadow-2xl flex flex-col justify-between">
-                  <div>
-                    <h2 className="text-2xl font-black text-white tracking-tight mb-1">Paket Populer</h2>
-                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-10">Persentase Penjualan Paket</p>
+                        {/* Left side connections */}
+                        <path d="M 50% 50% Q 40% 30% 25% 30%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
+                        <circle cx="25%" cy="30%" r="4" fill="#3b82f6" className="animate-pulse" />
 
-                    <div className="space-y-6">
-                      {[
-                        { name: '1 Hour', color: 'bg-blue-500', icon: Zap },
-                        { name: '1 Day', color: 'bg-emerald-500', icon: Calendar },
-                        { name: '1 Week', color: 'bg-indigo-500', icon: Shield },
-                      ].map((p) => {
-                        const total = vouchers.length || 1;
-                        const count = vouchers.filter(v => v.pack === p.name).length;
-                        const percent = Math.round((count / total) * 100);
+                        <path d="M 50% 50% Q 35% 50% 20% 50%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
+                        <circle cx="20%" cy="50%" r="6" fill="#0ea5e9" className="animate-pulse" style={{ animationDelay: '0.2s' }} />
 
-                        return (
-                          <div key={p.name} className="space-y-2">
-                            <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${p.color}`} />
-                                <span className="text-white">{p.name}</span>
-                              </div>
-                              <span className="text-slate-500">{percent}%</span>
-                            </div>
-                            <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full ${p.color} rounded-full transition-all duration-1000`}
-                                style={{ width: `${percent}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
+                        <path d="M 50% 50% Q 40% 70% 30% 80%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
+                        <circle cx="30%" cy="80%" r="5" fill="#10b981" className="animate-pulse" style={{ animationDelay: '0.5s' }} />
+
+                        <path d="M 50% 50% Q 45% 20% 35% 15%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
+                        <circle cx="35%" cy="15%" r="3" fill="#3b82f6" className="animate-pulse" style={{ animationDelay: '0.7s' }} />
+
+                        <path d="M 50% 50% Q 35% 65% 25% 65%" fill="none" stroke="url(#linkDark)" strokeWidth="1.5" />
+                        <circle cx="25%" cy="65%" r="4" fill="#0ea5e9" className="animate-pulse" style={{ animationDelay: '0.1s' }} />
+
+                        {/* Right side connections */}
+                        <defs>
+                          <linearGradient id="linkRight" x1="1" y1="0" x2="0" y2="0">
+                            <stop offset="0%" stopColor="#10b981" stopOpacity="0.1" />
+                            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.8" />
+                          </linearGradient>
+                        </defs>
+
+                        <path d="M 50% 50% Q 60% 20% 75% 15%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
+                        <circle cx="75%" cy="15%" r="5" fill="#10b981" className="animate-pulse" style={{ animationDelay: '0.3s' }} />
+
+                        <path d="M 50% 50% Q 70% 40% 85% 35%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
+                        <circle cx="85%" cy="35%" r="4" fill="#0ea5e9" className="animate-pulse" style={{ animationDelay: '0.6s' }} />
+
+                        <path d="M 50% 50% Q 65% 50% 80% 50%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
+                        <circle cx="80%" cy="50%" r="6" fill="#3b82f6" className="animate-pulse" style={{ animationDelay: '0.8s' }} />
+
+                        <path d="M 50% 50% Q 60% 70% 70% 80%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
+                        <circle cx="70%" cy="80%" r="4" fill="#10b981" className="animate-pulse" style={{ animationDelay: '0.4s' }} />
+
+                        <path d="M 50% 50% Q 65% 85% 75% 95%" fill="none" stroke="url(#linkRight)" strokeWidth="1.5" />
+                        <circle cx="75%" cy="95%" r="3" fill="#0ea5e9" className="animate-pulse" style={{ animationDelay: '0.9s' }} />
+                      </svg>
                     </div>
                   </div>
 
-                  <div className="mt-10 p-6 bg-blue-500/10 border border-blue-500/20 rounded-3xl">
-                    <p className="text-xs text-blue-400 font-black uppercase tracking-widest mb-2 flex items-center gap-2">
-                      <Activity size={12} /> Insight Hari Ini
-                    </p>
-                    <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-                      Paket <strong className="text-white">1 Hour</strong> tetap menjadi pilihan utama dengan volume penjualan tertinggi di jam makan siang.
-                    </p>
-                  </div>
-                </div>
-              </div>
+                </>
+              )
+            ) : activeTab === 'Vouchers' ? (
+              <div className="space-y-6 animate-in fade-in duration-500">
+                {/* VOUCHER MANAGEMENT CONTROLS */}
+                <div className="bg-[#151D2F] border border-[#26314A] rounded-3xl p-6 shadow-2xl">
+                  <div className="flex flex-col md:flex-row items-center gap-4">
+                    {/* Order ID Input Card (Image 1) */}
+                    <div className="flex-1 w-full">
+                      <div className="relative group">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                          <FileText size={20} className="text-blue-500 group-focus-within:text-blue-400 transition-colors" />
+                        </div>
+                        <input
+                          type="text"
+                          value={orderIdInput}
+                          onChange={(e) => setOrderIdInput(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleManualSync()}
+                          placeholder="Scan atau ketik Order ID dari Sistem POS..."
+                          className="w-full bg-[#0B1320] border-2 border-[#26314A] focus:border-blue-500 rounded-[1.25rem] pl-12 pr-4 py-5 text-white placeholder-slate-600 outline-none transition-all shadow-inner font-medium"
+                        />
+                      </div>
+                    </div>
 
-              {/* Transactions History Table */}
-              <div className="bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] overflow-hidden shadow-2xl">
-                <div className="p-8 lg:p-10 border-b border-white/[0.05] flex justify-between items-center bg-[#1A233A]/30">
-                  <div>
-                    <h2 className="text-2xl font-black text-white tracking-tight">Riwayat Penjualan Terbaru</h2>
-                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Daftar transaksi sinkronisasi POS</p>
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                      <button
+                        onClick={handleManualSync}
+                        disabled={isSyncingOrder}
+                        className="flex-1 md:flex-none px-10 py-5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-black text-sm uppercase tracking-widest rounded-[1.25rem] transition-all shadow-xl shadow-blue-600/20 active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
+                      >
+                        {isSyncingOrder ? <RefreshCw className="animate-spin" size={20} /> : <Zap size={20} />}
+                        PROSES ORDER
+                      </button>
+
+                      <button
+                        onClick={() => setShowManualGen(!showManualGen)}
+                        className={`p-5 rounded-[1.25rem] border-2 transition-all active:scale-95 flex items-center justify-center shadow-lg ${showManualGen ? 'bg-blue-600 border-blue-400 text-white' : 'bg-[#1A233A] border-[#26314A] text-slate-400 hover:border-slate-500'}`}
+                      >
+                        <Plus size={24} className={`transition-transform duration-300 ${showManualGen ? 'rotate-45' : ''}`} />
+                      </button>
+                    </div>
                   </div>
-                  <button className="px-6 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all">
-                    Lihat Semua
-                  </button>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-black/20 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] border-b border-white/[0.05]">
-                        <th className="px-10 py-6">ID Order</th>
-                        <th className="px-10 py-6">Customer</th>
-                        <th className="px-10 py-6">Item / Paket</th>
-                        <th className="px-10 py-6">Pendapatan</th>
-                        <th className="px-10 py-6 text-right">Metode</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/[0.03]">
-                      {vouchers.slice(0, 5).map((v, i) => (
-                        <tr key={i} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="px-10 py-6 font-mono text-xs text-blue-400 font-bold tracking-wider">
-                            {v.details?.orderNo || 'POS-OFFLINE'}
-                          </td>
-                          <td className="px-10 py-6 text-xs text-white font-bold uppercase tracking-tight">
-                            {v.details?.customer || 'Guest User'}
-                          </td>
-                          <td className="px-10 py-6">
-                            <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                              {v.pack}
-                            </span>
-                          </td>
-                          <td className="px-10 py-6 text-xs text-white font-black">
-                            {v.price}
-                          </td>
-                          <td className="px-10 py-6 text-right">
-                            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">
-                              {v.details?.payment || 'CASH'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                      {vouchers.length === 0 && (
-                        <tr>
-                          <td colSpan="5" className="px-10 py-20 text-center opacity-30">
-                            <Activity size={40} className="mx-auto mb-4" />
-                            <p className="text-xs font-black uppercase tracking-widest">Belum Ada Data Laporan</p>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          ) : activeTab === 'Customers' ? (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-700">
-              {/* User Directory Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
-                    <Users size={80} />
-                  </div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Total Pelanggan</p>
-                  <h3 className="text-3xl font-black text-white tracking-tight mb-2">
-                    <CountUp end={[...new Set(vouchers.map(v => v.details?.customer || 'Guest User'))].length} />
-                  </h3>
-                  <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
-                    Database Sinkronisasi POS
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-4 pl-2 opacity-50">
+                    Tekan <span className="text-white">Enter</span> pada keyboard untuk memproses secara otomatis.
                   </p>
                 </div>
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
-                    <Activity size={80} />
-                  </div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">User Aktif</p>
-                  <h3 className="text-3xl font-black text-emerald-400 tracking-tight mb-2">
-                    <CountUp end={activeUsers.length} />
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Live Monitoring</span>
-                  </div>
-                </div>
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
-                    <Zap size={80} />
-                  </div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Returning Rate</p>
-                  <h3 className="text-3xl font-black text-blue-400 tracking-tight mb-2">
-                    <CountUp end={
-                      (() => {
-                        const uniqueUsers = Array.from(new Set(vouchers.map(v => v.details?.customer || 'Guest User')));
-                        if (uniqueUsers.length === 0) return 0;
-                        const returners = uniqueUsers.filter(name => vouchers.filter(v => (v.details?.customer || 'Guest User') === name).length > 1);
-                        return Math.round((returners.length / uniqueUsers.length) * 100);
-                      })()
-                    } suffix="%" />
-                  </h3>
-                  <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Kesetiaan Pelanggan</span>
-                </div>
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
-                    <Shield size={80} />
-                  </div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Quality Score</p>
-                  <h3 className="text-3xl font-black text-white tracking-tight mb-2">
-                    <CountUp end={9.8} decimals={1} />
-                  </h3>
-                  <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Rating Sistem WiFi</span>
-                </div>
-              </div>
 
-              {/* User Directory Layout */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* User List Table */}
-                <div className="lg:col-span-2 bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] overflow-hidden shadow-2xl">
-                  <div className="p-8 border-b border-white/[0.05] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#1A233A]/30">
-                    <div>
-                      <h2 className="text-2xl font-black text-white tracking-tight">Pelanggan Terdaftar</h2>
-                      <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Daftar user berdasarkan transaksi POS</p>
+                {/* MANUAL GENERATOR CARD (Image 2) */}
+                {showManualGen && (
+                  <div className="bg-[#151D2F] border-2 border-blue-500/20 rounded-[2.5rem] p-10 shadow-3xl animate-in zoom-in-95 slide-in-from-top-4 duration-300">
+                    <div className="flex items-center gap-5 mb-10">
+                      <div className="p-3 bg-blue-500 font-black text-white rounded-2xl shadow-lg shadow-blue-500/20">
+                        <Plus size={32} />
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-black text-white tracking-tight">Generator Manual</h2>
+                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mt-1">Manual Hotspot Creation Flow</p>
+                      </div>
                     </div>
-                    <div className="relative w-full md:w-64">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                      <input
-                        type="text"
-                        placeholder="Cari nama, kode voucher, atau ID order..."
-                        value={customerSearch}
-                        onChange={(e) => setCustomerSearch(e.target.value)}
-                        className="w-full bg-black/20 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-xs text-white outline-none focus:border-blue-500/50 transition-all font-medium"
-                      />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-8">
+                      {/* Input Group 1 */}
+                      <div className="space-y-3">
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Jumlah Voucher</label>
+                        <input
+                          type="number"
+                          value={manualGenQty}
+                          onChange={(e) => setManualGenQty(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-full bg-[#0B1320] border-2 border-[#26314A] focus:border-blue-500 rounded-2xl px-5 py-4 text-white font-bold outline-none transition-all shadow-inner"
+                        />
+                      </div>
+                      {/* Input Group 2 */}
+                      <div className="space-y-3">
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Limit Device</label>
+                        <input
+                          type="number"
+                          value={manualGenLimit}
+                          onChange={(e) => setManualGenLimit(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-full bg-[#0B1320] border-2 border-[#26314A] focus:border-blue-500 rounded-2xl px-5 py-4 text-white font-bold outline-none transition-all shadow-inner"
+                        />
+                      </div>
+                      {/* Input Group 3 */}
+                      <div className="space-y-3">
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Durasi (Menit)</label>
+                        <input
+                          type="number"
+                          value={manualGenDur}
+                          onChange={(e) => setManualGenDur(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-full bg-[#0B1320] border-2 border-[#26314A] focus:border-blue-500 rounded-2xl px-5 py-4 text-white font-bold outline-none transition-all shadow-inner"
+                        />
+                      </div>
+                      {/* Input Group 4 */}
+                      <div className="space-y-3">
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Harga (Rp)</label>
+                        <input
+                          type="number"
+                          value={manualGenPrice}
+                          onChange={(e) => setManualGenPrice(Math.max(0, parseInt(e.target.value) || 0))}
+                          className="w-full bg-[#0B1320] border-2 border-[#26314A] focus:border-blue-500 rounded-2xl px-5 py-4 text-emerald-400 font-bold outline-none transition-all shadow-inner"
+                        />
+                      </div>
+                      {/* Input Group 5 */}
+                      <div className="space-y-3">
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Kec. Limit (Rate Limit)</label>
+                        <select
+                          value={manualGenSpeed}
+                          onChange={(e) => setManualGenSpeed(e.target.value)}
+                          className="w-full bg-[#0B1320] border-2 border-[#26314A] focus:border-blue-500 rounded-2xl px-5 py-4 text-white font-bold outline-none transition-all shadow-inner appearance-none custom-select"
+                        >
+                          <option value="1M/1M">1 Mbps (Low)</option>
+                          <option value="2M/3M">2 Mbps (Standard)</option>
+                          <option value="2M/5M">5 Mbps (Fast)</option>
+                          <option value="5M/10M">10 Mbps (Extreme)</option>
+                          <option value="">Tanpa Limit (Unlimited)</option>
+                        </select>
+                      </div>
+
+                      {/* Input Group 6 - Volume Limit */}
+                      <div className="space-y-3">
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Kuota Data (Volume Limit)</label>
+                        <select
+                          value={genVolumeLimit}
+                          onChange={(e) => setGenVolumeLimit(e.target.value)}
+                          className="w-full bg-[#0B1320] border-2 border-[#26314A] focus:border-blue-500 rounded-2xl px-5 py-4 text-white font-bold outline-none transition-all shadow-inner appearance-none custom-select"
+                        >
+                          <option value="0">Tanpa Batas (Unlimited)</option>
+                          <option value="536870912">500 MB</option>
+                          <option value="1073741824">1 GB</option>
+                          <option value="2147483648">2 GB</option>
+                          <option value="5368709120">5 GB</option>
+                          <option value="10737418240">10 GB</option>
+                        </select>
+                      </div>
+
+                      {/* Input Group 7 */}
+                      <div className="lg:col-span-1 space-y-3">
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Keterangan / Label</label>
+                        <input
+                          type="text"
+                          placeholder="Misal: Tamu VIP"
+                          value={manualGenLabel}
+                          onChange={(e) => setManualGenLabel(e.target.value)}
+                          className="w-full bg-[#0B1320] border-2 border-[#26314A] focus:border-blue-500 rounded-2xl px-5 py-4 text-white font-bold outline-none transition-all shadow-inner placeholder:slate-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end mt-12">
+                      <button
+                        onClick={handlePremiumManualGen}
+                        disabled={isGeneratingVoucher}
+                        className="px-12 py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-widest rounded-2xl transition-all shadow-2xl shadow-indigo-600/30 active:scale-95 flex items-center gap-3"
+                      >
+                        {isGeneratingVoucher ? <RefreshCw className="animate-spin" size={20} /> : <Zap size={20} />}
+                        GENERATE & AKTIFKAN
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* VOUCHER TABLE CARD */}
+                <div className="bg-[#151D2F] border border-[#26314A] rounded-[2.5rem] overflow-hidden shadow-2xl">
+                  <div className="p-10 border-b border-[#26314A] bg-[#1A233A]/50 flex justify-between items-center">
+                    <div>
+                      <h2 className="text-xl font-bold text-white tracking-tight">History Terakhir</h2>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Voucher yang baru saja terbit dalam sistem</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 bg-[#0B1320] px-4 py-2 rounded-xl border border-[#26314A]">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{vouchers.length} Terdaftar</span>
+                      </div>
                     </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
                       <thead>
-                        <tr className="bg-black/20 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] border-b border-white/[0.05]">
-                          <th className="px-10 py-6">Customer Name</th>
-                          <th className="px-10 py-6">Last Order</th>
-                          <th className="px-10 py-6">Total Trx</th>
-                          <th className="px-10 py-6">Last Pack</th>
-                          <th className="px-10 py-6 text-right">Action</th>
+                        <tr className="bg-black/20 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] border-b border-[#26314A]">
+                          <th className="px-10 py-6">ID Voucher</th>
+                          <th className="px-10 py-6">Durasi / Quota</th>
+                          <th className="px-10 py-6">Speed Limit</th>
+                          <th className="px-10 py-6">Pendapatan</th>
+                          <th className="px-10 py-6 text-center">Tgl Terbit</th>
+                          <th className="px-10 py-6 text-right">Aksi</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/[0.03]">
-                        {Array.from(new Set(vouchers.map(v => v.details?.customer || 'Guest User')))
-                          .filter(name => {
-                            const search = customerSearch.toLowerCase();
-                            const userVouchers = vouchers.filter(v => (v.details?.customer || 'Guest User') === name);
-                            return name.toLowerCase().includes(search) ||
-                              userVouchers.some(v =>
-                                v.code.toLowerCase().includes(search) ||
-                                (v.details?.orderNo && v.details.orderNo.toLowerCase().includes(search))
-                              );
-                          })
-                          .slice(0, 10).map((name, i) => {
-                            const userVouchers = vouchers.filter(v => (v.details?.customer || 'Guest User') === name);
-                            const lastVoucher = userVouchers[0];
-                            return (
-                              <tr key={i} className="hover:bg-white/[0.02] transition-colors group">
+                      <tbody className="divide-y divide-[#26314A]/30">
+                        {vouchers.length > 0 ? (
+                          vouchers
+                            .slice(0, 50)
+                            .map((v, i) => (
+                              <tr key={v.code || i} className="hover:bg-white/[0.02] transition-colors group cursor-pointer" onClick={() => setSelectedVoucher(v)}>
                                 <td className="px-10 py-6">
                                   <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 flex items-center justify-center border border-white/5 ring-1 ring-white/5">
-                                      <span className="text-blue-400 font-black text-[10px] uppercase">{name.substring(0, 2)}</span>
+                                    <div className="p-1.5 bg-white rounded-xl shadow-lg ring-1 ring-black/10">
+                                      <QRCodeSVG value={v.magicLink || v.code || 'NULL'} size={32} />
                                     </div>
                                     <div>
-                                      <p className="text-xs text-white font-black uppercase tracking-tight">{name}</p>
-                                      <p className="text-[9px] text-slate-500 font-bold uppercase mt-0.5">Verified Customer</p>
+                                      <p className="font-mono text-xs text-blue-400 font-black tracking-widest leading-none mb-1">{v.code}</p>
+                                      <p className="text-[9px] text-slate-600 font-bold uppercase">ID: {v.details?.orderNo || 'MANUAL'}</p>
                                     </div>
                                   </div>
                                 </td>
                                 <td className="px-10 py-6">
-                                  <p className="text-[11px] text-slate-400 font-medium">{lastVoucher?.date || 'N/A'}</p>
+                                  <div className="flex flex-col gap-1">
+                                    <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-black text-slate-400 uppercase tracking-widest w-fit">
+                                      {v.pack || 'STANDARD'}
+                                    </span>
+                                    {v.volumeLimit && v.volumeLimit !== '0' && (
+                                      <span className="text-[9px] text-blue-400 font-bold uppercase pl-1">
+                                        Quota: {v.volumeLimit > 1073741824 ? `${(v.volumeLimit / 1073741824).toFixed(1)} GB` : `${(v.volumeLimit / 1048576).toFixed(0)} MB`}
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
-                                <td className="px-10 py-6">
-                                  <span className="px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-lg text-[10px] font-black text-blue-400">
-                                    {userVouchers.length} Transaksi
-                                  </span>
+                                <td className="px-10 py-6 text-xs text-indigo-400 font-bold">
+                                  {v.rateLimit || 'No Limit'}
                                 </td>
-                                <td className="px-10 py-6">
-                                  <span className="text-xs text-slate-300 font-bold">{lastVoucher?.pack || 'N/A'}</span>
+                                <td className="px-10 py-6 text-xs text-white font-black">{v.price || 'Rp 0'}</td>
+                                <td className="px-10 py-6 text-center text-[10px] text-slate-500 font-bold">
+                                  {v.date && v.date.includes('T') ? new Date(v.date).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : v.date}
                                 </td>
                                 <td className="px-10 py-6 text-right">
-                                  <button className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-blue-600 transition-all opacity-0 group-hover:opacity-100">
-                                    <ChevronRight size={16} />
-                                  </button>
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); printVoucher(v); }}
+                                      className="p-3 bg-blue-500/10 text-blue-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm border border-blue-500/20"
+                                      title="Cetak Voucher"
+                                    >
+                                      <Printer size={16} />
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setSelectedVoucher(v); }}
+                                      className="p-3 bg-slate-800 text-slate-400 rounded-xl hover:text-white transition-colors border border-white/5"
+                                    >
+                                      <MoreHorizontal size={16} />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
-                            );
-                          })}
-                        {vouchers.length === 0 && (
+                            ))) : (
                           <tr>
-                            <td colSpan="5" className="px-10 py-24 text-center">
-                              <div className="flex flex-col items-center gap-4 opacity-30">
-                                <Users size={48} className="text-slate-500" />
-                                <div>
-                                  <p className="text-white font-black uppercase tracking-widest text-sm">Database Kosong</p>
-                                  <p className="text-slate-500 text-[10px] font-bold uppercase mt-1">Belum ada pelanggan yang tersinkronisasi</p>
+                            <td colSpan="6" className="px-10 py-32 text-center opacity-30">
+                              <Ticket size={48} className="mx-auto mb-4" />
+                              <p className="text-xs font-black uppercase tracking-widest">Belum Ada Voucher</p>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* VOUCHER DETAIL MODAL / PREVIEW - COMPACTED */}
+                {selectedVoucher && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedVoucher(null)}>
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-[2.5rem] w-full max-w-[320px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                      {/* Header: More compact blue section */}
+                      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-center relative">
+                        <button
+                          onClick={() => setSelectedVoucher(null)}
+                          className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1"
+                        >
+                          <XCircle size={20} />
+                        </button>
+
+                        <div className="inline-block bg-white p-3 rounded-2xl shadow-xl mb-3">
+                          <QRCodeSVG value={selectedVoucher.magicLink || selectedVoucher.code} size={110} />
+                        </div>
+                        <h3 className="text-white font-black text-xl tracking-tighter leading-none mb-1">{selectedVoucher.code}</h3>
+                        <p className="text-blue-100/60 text-[10px] font-bold uppercase tracking-[0.2em]">{selectedVoucher.pack}</p>
+
+                        <div className="mt-4 px-3 py-1.5 bg-amber-500/20 border border-amber-500/30 rounded-xl flex items-center gap-2">
+                          <AlertTriangle size={12} className="text-amber-400" />
+                          <p className="text-[9px] text-amber-200 font-bold uppercase">Sambungkan ke WiFi sebelum Scan!</p>
+                        </div>
+                      </div>
+
+                      {/* Body: Reduced padding and component sizes */}
+                      <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-3 bg-[#0B1320] rounded-xl border border-[#26314A]">
+                            <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Status</p>
+                            <p className={`font-bold text-[12px] ${selectedVoucher.status === 'Active' ? 'text-emerald-400' : 'text-blue-400'}`}>{selectedVoucher.status || 'Active'}</p>
+                          </div>
+                          <div className="p-3 bg-[#0B1320] rounded-xl border border-[#26314A]">
+                            <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Price</p>
+                            <p className="text-white font-bold text-[12px]">{selectedVoucher.price}</p>
+                          </div>
+                          <div className="p-3 bg-[#1A233A] rounded-xl border border-blue-500/20">
+                            <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Speed Limit</p>
+                            <p className="text-indigo-400 font-bold text-[12px]">{selectedVoucher.rateLimit || 'No Limit'}</p>
+                          </div>
+                          <div className="p-3 bg-[#1A233A] rounded-xl border border-blue-500/20">
+                            <p className="text-[9px] text-slate-500 font-bold uppercase mb-0.5">Volume Limit</p>
+                            <p className="text-blue-400 font-bold text-[12px]">
+                              {selectedVoucher.volumeLimit && selectedVoucher.volumeLimit !== '0'
+                                ? (selectedVoucher.volumeLimit > 1073741824 ? `${(selectedVoucher.volumeLimit / 1073741824).toFixed(1)} GB` : `${(selectedVoucher.volumeLimit / 1048576).toFixed(0)} MB`)
+                                : 'Unlimited'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {selectedVoucher.details && (
+                          <div className="p-4 bg-white/5 rounded-2xl border border-white/10 space-y-2">
+                            <div className="flex justify-between items-center text-[10px]">
+                              <span className="text-slate-500 font-bold uppercase tracking-widest">Order #</span>
+                              <span className="text-slate-300 font-mono">{selectedVoucher.details.orderNo}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[10px]">
+                              <span className="text-slate-500 font-bold uppercase tracking-widest">Customer</span>
+                              <span className="text-slate-300">{selectedVoucher.details.customer}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 pt-2">
+                          <button
+                            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                            onClick={() => window.print()}
+                          >
+                            <Printer size={16} />
+                            Print
+                          </button>
+                          <button
+                            onClick={() => setSelectedVoucher(null)}
+                            className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl transition-all active:scale-95"
+                          >
+                            Tutup
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : activeTab === 'Settings' ? (
+              !isSettingsUnlocked ? (
+                <div className="flex flex-col items-center justify-center p-12 bg-[#151D2F] border border-[#26314A] rounded-3xl shadow-xl max-w-lg mx-auto mt-20">
+                  <div className="w-20 h-20 rounded-full bg-blue-500/10 flex items-center justify-center mb-6">
+                    <Shield size={40} className="text-blue-500" />
+                  </div>
+                  <h2 className="text-2xl font-black text-white text-center mb-2">Akses Terkunci</h2>
+                  <p className="text-sm text-slate-500 text-center mb-8 font-medium">
+                    Halaman Pengaturan memerlukan verifikasi ulang untuk memastikan keamanan sistem. Silakan masukkan password administrator Anda.
+                  </p>
+
+                  <form onSubmit={handleSettingsLogin} className="w-full space-y-4">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <Lock size={18} className="text-slate-500" />
+                      </div>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={settingsLoginForm.password}
+                        onChange={(e) => setSettingsLoginForm({ password: e.target.value })}
+                        placeholder="Masukkan Password Admin"
+                        className="w-full bg-[#0B1320] border border-[#26314A] focus:border-blue-500 rounded-xl py-4 pl-12 pr-12 text-sm text-white outline-none transition-all shadow-inner"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-white transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+
+                    {settingsLoginError && (
+                      <p className="text-red-400 text-xs font-bold text-center mt-2">{settingsLoginError}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isLoggingIn || !settingsLoginForm.password}
+                      className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 text-white text-sm font-black rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98] flex items-center justify-center gap-3 mt-4"
+                    >
+                      {isLoggingIn ? <RefreshCw className="animate-spin" size={18} /> : <Unlock size={18} />}
+                      {isLoggingIn ? 'Memverifikasi...' : 'Buka Pengaturan'}
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  <div className="flex justify-between items-center bg-[#151D2F] border border-[#26314A] rounded-2xl p-4 shadow-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                      <span className="text-xs font-black text-emerald-500 uppercase tracking-widest">Sesi Pengaturan Aktif</span>
+                    </div>
+                    <button
+                      onClick={handleSettingsLogout}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-2"
+                    >
+                      <Lock size={12} /> Kunci Kembali
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+                    {/* CARD: DASHBOARD ADMIN LOGIN CONFIGURATION */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl lg:col-span-2">
+                      <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg">
+                            <Users size={20} />
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-bold text-white">Pengaturan Akses Login Dashboard</h2>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Ubah Username dan Password Admin</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Username Administrator</label>
+                          <input
+                            type="text"
+                            placeholder="Contoh: kasir"
+                            value={adminAuth.username}
+                            onChange={(e) => setAdminAuth({ ...adminAuth, username: e.target.value })}
+                            className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-purple-500 outline-none transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Password Administrator</label>
+                          <input
+                            type="text"
+                            placeholder="Ubah Password"
+                            value={adminAuth.password}
+                            onChange={(e) => setAdminAuth({ ...adminAuth, password: e.target.value })}
+                            className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-purple-500 outline-none transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-6 flex justify-end">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await axios.post(`http://${window.location.hostname}:3001/api/save-config`, {
+                                type: 'adminAuth',
+                                config: adminAuth
+                              });
+                              alert('✅ Berhasil menyimpan pengaturan login admin!');
+                            } catch (e) {
+                              alert('❌ Gagal menyimpan pengaturan login.');
+                            }
+                          }}
+                          className="px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <Users size={16} /> Update Login Admin
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* CARD 1: HOTSPOT API LOGIN (Daily Use - Restricted) */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl">
+                      <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg">
+                            <Ticket size={20} />
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-bold text-white">Hotspot API Access</h2>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Akun API User Group (Terbatas)</p>
+                          </div>
+                        </div>
+                        <div className="px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full">
+                          <span className="text-[9px] font-black text-blue-400 uppercase tracking-tighter">API Mode</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        {/* ... existing IP and DNS inputs ... */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Router Address (IP)</label>
+                            <input
+                              type="text"
+                              placeholder="192.168.88.1"
+                              value={mtConfig.ip}
+                              onChange={(e) => setMtConfig({ ...mtConfig, ip: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">DNS Name (Hotspot URL)</label>
+                            <input
+                              type="text"
+                              placeholder="wifi.login"
+                              value={mtConfig.dnsName}
+                              onChange={(e) => setMtConfig({ ...mtConfig, dnsName: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">User API (Restricted)</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. api_vocher"
+                              value={mtConfig.user}
+                              onChange={(e) => setMtConfig({ ...mtConfig, user: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Password API</label>
+                            <input
+                              type="password"
+                              placeholder="••••••••"
+                              value={mtConfig.pass}
+                              onChange={(e) => setMtConfig({ ...mtConfig, pass: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Login Path (Magic Link Extension)</label>
+                          <input
+                            type="text"
+                            value={mtConfig.loginPath || '/login'}
+                            onChange={(e) => setMtConfig({ ...mtConfig, loginPath: e.target.value })}
+                            className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white"
+                          />
+                        </div>
+
+                        <div className="flex gap-4 pt-4">
+                          <button
+                            onClick={handleTestMikroTik}
+                            className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all"
+                          >
+                            Uji Koneksi API
+                          </button>
+                          <button
+                            onClick={handleSaveMikroTik}
+                            className="flex-[2] py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all"
+                          >
+                            Simpan & Aktifkan
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CARD 2: ROUTER MASTER MANAGER (One-Time Setup - Full Access) */}
+                    <div className="bg-[#0B1320] border-2 border-amber-500/10 rounded-2xl p-8 shadow-2xl relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <Shield size={120} />
+                      </div>
+
+                      <div className="flex items-center gap-3 mb-8">
+                        <div className="p-2 bg-amber-500/20 text-amber-400 rounded-lg">
+                          <Shield size={20} />
+                        </div>
+                        <div>
+                          <h2 className="text-xl font-bold text-white">WinBox Admin Login</h2>
+                          <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest mt-0.5">Master Manager (Full Admin Access)</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6 relative z-10">
+                        <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4">
+                          <p className="text-[10px] text-slate-400 leading-relaxed font-medium">
+                            Masukkan akun <strong>Admin WinBox</strong> MikroTik Anda di sini untuk melakukan konfigurasi otomatis atau sinkronisasi profile.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">WinBox Username</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. admin"
+                              id="admin_user_temp"
+                              className="w-full bg-[#151D2F] border border-amber-500/10 rounded-xl px-4 py-3 text-sm text-white focus:border-amber-500 outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">WinBox Password</label>
+                            <input
+                              type="password"
+                              placeholder="••••••••"
+                              id="admin_pass_temp"
+                              className="w-full bg-[#151D2F] border border-amber-500/10 rounded-xl px-4 py-3 text-sm text-white focus:border-amber-500 outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                          <button
+                            onClick={async () => {
+                              const user = document.getElementById('admin_user_temp').value;
+                              const pass = document.getElementById('admin_pass_temp').value;
+                              if (!user || !pass) return alert('Masukkan Akun Admin Full MikroTik Anda!');
+
+                              if (confirm('Sistem akan mencoba membuat akun API terbatas secara otomatis. Lanjutkan?')) {
+                                setIsLoading(true);
+                                try {
+                                  const res = await axios.post(`http://${window.location.hostname}:3001/api/setup-secure-user`, {
+                                    adminUser: user,
+                                    adminPass: pass,
+                                    user: 'api_vocher',
+                                    pass: 'vocher1234'
+                                  });
+                                  if (res.data.success) alert('✅ BERHASIL: User terbatas "api_vocher" telah dibuat.');
+                                } catch (e) { alert('❌ GAGAL: Koneksi ditolak.'); } finally { setIsLoading(false); }
+                              }
+                            }}
+                            className="w-full py-4 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 font-bold text-xs uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-3"
+                          >
+                            <Plus size={16} />
+                            AUTO-CREATE USER TERBATAS
+                          </button>
+
+                          <button
+                            onClick={async () => {
+                              const user = document.getElementById('admin_user_temp').value;
+                              const pass = document.getElementById('admin_pass_temp').value;
+                              if (!user || !pass) return alert('Masukkan Akun Admin Full MikroTik Anda!');
+                              setIsProvisioning(true);
+                              try {
+                                await axios.post(`http://${window.location.hostname}:3001/api/setup-router-admin`, { adminUser: user, adminPass: pass });
+                                alert('✅ Sinkronisasi Profile Hotspot Berhasil!');
+                              } catch (e) { alert('❌ Gagal Sinkron.'); } finally { setIsProvisioning(false); }
+                            }}
+                            className="w-full py-4 border-2 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-black text-xs uppercase tracking-[0.2em] rounded-xl transition-all flex items-center justify-center gap-3"
+                          >
+                            <Zap size={16} />
+                            SINKRONKAN ROUTER & PROFILE
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* WIFI SETTINGS CONFIGURATION */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl">
+                      <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg">
+                            <Wifi size={20} />
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-bold text-white">WiFi Identity Configuration</h2>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">SSID & Signal Authentication</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-6">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">SSID Name (WiFi Name)</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. NetVocher_Free"
+                            value={wifiSettings.ssid}
+                            onChange={(e) => setWifiSettings({ ...wifiSettings, ssid: e.target.value })}
+                            className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none transition-all text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Global Password (Optional)</label>
+                          <div className="relative">
+                            <input
+                              type={showPassword ? "text" : "password"}
+                              placeholder="Kosongkan jika Hotspot Terbuka"
+                              value={wifiSettings.password}
+                              onChange={(e) => setWifiSettings({ ...wifiSettings, password: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none transition-all text-white pl-4 pr-12"
+                            />
+                            <button
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                            >
+                              {showPassword ? <Eye size={18} /> : <EyeOff size={18} />}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-indigo-500/5 rounded-xl border border-indigo-500/10">
+                          <p className="text-[10px] text-indigo-400 font-bold uppercase mb-1">💡 INFO:</p>
+                          <p className="text-[10px] text-slate-500 leading-normal">
+                            Mengubah SSID akan menyebabkan router melakukan reset singkat pada modul wireless. Pastikan tidak ada transaksi aktif yang bergantung pada Wi-Fi utama.
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleUpdateWifi}
+                          disabled={isUpdatingWifi}
+                          className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-[0.98] flex items-center justify-center gap-2"
+                        >
+                          {isUpdatingWifi ? <RefreshCw className="animate-spin" size={18} /> : <Zap size={18} />}
+                          UPDATE IDENTITY
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl">
+                      <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg transition-colors ${testResults.runchise === 'success' ? 'bg-pink-500/20 text-pink-400' : 'bg-pink-500/10 text-pink-400'}`}>
+                            <Zap size={20} />
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-bold text-white">Runchise POS Integration</h2>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Webhook & API Key System</p>
+                          </div>
+                        </div>
+                        <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-tighter transition-all duration-500 ${testResults.runchise === 'success' ? 'bg-pink-500/20 text-pink-400 border border-pink-500/30' : 'bg-[#0B1320] text-slate-500 border border-[#26314A]'}`}>
+                          <div className={`w-2 h-2 rounded-full ${testResults.runchise === 'success' ? 'bg-pink-400 animate-pulse' : 'bg-slate-600'}`}></div>
+                          {testResults.runchise === 'success' ? 'API Valid & Authorized' : 'Waiting for Auth'}
+                        </div>
+                      </div>
+                      <div className="space-y-6">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">API Key</label>
+                          <input
+                            type="text"
+                            placeholder="sk_live_..."
+                            value={rcConfig.apiKey}
+                            onChange={(e) => setRcConfig({ ...rcConfig, apiKey: e.target.value })}
+                            className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-pink-500 outline-none transition-all"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Default Pack (Beli Makanan/Tiket)</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 1 Hour"
+                              value={rcConfig.defaultPack}
+                              onChange={(e) => setRcConfig({ ...rcConfig, defaultPack: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-pink-500 outline-none transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Default Profile (MikroTik)</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. NV-1H"
+                              value={rcConfig.defaultProfile}
+                              onChange={(e) => setRcConfig({ ...rcConfig, defaultProfile: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-pink-500 outline-none transition-all"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Max Shared Devices (Per Voucher)</label>
+                            <input
+                              type="number"
+                              placeholder="e.g. 1"
+                              min="1"
+                              max="10"
+                              value={rcConfig.defaultSharedUsers || ''}
+                              onChange={(e) => setRcConfig({ ...rcConfig, defaultSharedUsers: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-pink-500 outline-none transition-all"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Minimum Order Bonus (Rp)</label>
+                            <input
+                              type="number"
+                              placeholder="e.g. 50000"
+                              min="0"
+                              value={rcConfig.minOrder || ''}
+                              onChange={(e) => setRcConfig({ ...rcConfig, minOrder: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm focus:border-pink-500 outline-none transition-all"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Webhook URL</label>
+                          <input type="text" value="https://api.netvocher.com/v1/webhook" readOnly className="w-full bg-[#0B1320]/50 border border-[#26314A] rounded-xl px-4 py-3 text-sm text-slate-500 cursor-not-allowed" />
+                        </div>
+                        <div className="flex gap-3 pt-2">
+                          <button
+                            onClick={handleTestRunchise}
+                            disabled={isTestingRunchise}
+                            className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                          >
+                            {isTestingRunchise ? <RefreshCw size={18} className="animate-spin" /> : <Activity size={18} />}
+                            Test API
+                          </button>
+                          <button
+                            onClick={handleSaveRunchise}
+                            className="flex-[2] py-4 bg-[#E11D48] hover:bg-[#F43F5E] text-white font-bold rounded-xl transition-all shadow-lg shadow-pink-500/20 active:scale-[0.98]"
+                          >
+                            Apply Reset
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* VOUCHER MAPPING RULES */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl">
+                      <div className="flex items-center gap-3 mb-8">
+                        <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg">
+                          <Ticket size={20} />
+                        </div>
+                        <div>
+                          <h2 className="text-xl font-bold text-white">Pengaturan Otomatis (Mapping)</h2>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Atur paket berdasarkan nama item di Runchise</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        {rcConfig.mapping?.map((map, idx) => (
+                          <div key={idx} className="grid grid-cols-12 gap-3 items-end bg-[#0B1320] p-4 rounded-xl border border-[#26314A]">
+                            <div className="col-span-2">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase mb-1 block">Kata Kunci Item</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. jam, hour"
+                                value={map.keyword}
+                                onChange={(e) => updateMapping(idx, 'keyword', e.target.value)}
+                                className="w-full bg-[#151D2F] border border-[#26314A] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase mb-1 block">Nama Paket (UI)</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. 1 Hour"
+                                value={map.pack}
+                                onChange={(e) => updateMapping(idx, 'pack', e.target.value)}
+                                className="w-full bg-[#151D2F] border border-[#26314A] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase mb-1 block">MikroTik Profile</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. NV-1H"
+                                value={map.profile}
+                                onChange={(e) => updateMapping(idx, 'profile', e.target.value)}
+                                className="w-full bg-[#151D2F] border border-[#26314A] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase mb-1 block">Limit Kec.</label>
+                              <input
+                                type="text"
+                                placeholder="2M/2M"
+                                value={map.rateLimit}
+                                onChange={(e) => updateMapping(idx, 'rateLimit', e.target.value)}
+                                className="w-full bg-[#151D2F] border border-[#26314A] rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+                              />
+                            </div>
+                            <div className="col-span-3">
+                              <label className="text-[9px] font-bold text-slate-500 uppercase mb-1 block">Volume Limit (Quota)</label>
+                              <select
+                                value={map.volumeLimit || map.volume_limit || '0'}
+                                onChange={(e) => updateMapping(idx, 'volumeLimit', e.target.value)}
+                                className="w-full bg-[#151D2F] border border-[#26314A] rounded-lg px-2 py-2 text-xs text-white outline-none focus:border-blue-500"
+                              >
+                                <option value="0">Unlimited</option>
+                                <option value="536870912">500 MB</option>
+                                <option value="1073741824">1 GB</option>
+                                <option value="2147483648">2 GB</option>
+                                <option value="5368709120">5 GB</option>
+                                <option value="10737418240">10 GB</option>
+                              </select>
+                            </div>
+                            <div className="col-span-1">
+                              <button onClick={() => removeMapping(idx)} className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
+                                <XCircle size={18} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                        <button
+                          onClick={addMapping}
+                          className="w-full py-3 border border-dashed border-[#26314A] hover:border-blue-500/50 rounded-xl text-xs font-bold text-slate-500 hover:text-blue-400 transition-all flex items-center justify-center gap-2"
+                        >
+                          + Tambah Aturan Mapping Baru
+                        </button>
+
+                        <button
+                          onClick={handleSaveRunchise}
+                          className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-lg active:scale-95 mt-4"
+                        >
+                          Simpan Seluruh Sinkronisasi
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* EMERGENCY ORDER SYNC */}
+                    <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-8 shadow-xl">
+                      <div className="flex items-center gap-3 mb-8">
+                        <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg">
+                          <RefreshCw size={20} />
+                        </div>
+                        <div>
+                          <h2 className="text-xl font-bold text-white">Validasi Order Manual (Darurat)</h2>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Gunakan jika webhook otomatis gagal/error</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 bg-amber-500/5 border border-amber-500/10 p-6 rounded-2xl relative overflow-hidden">
+                        <div className="relative z-10 space-y-4">
+                          <div>
+                            <label className="text-[10px] font-bold text-amber-400/70 uppercase mb-1.5 block">Order ID Runchise</label>
+                            <input
+                              type="text"
+                              placeholder="Masukkan Order ID (e.g. ORD-123...)"
+                              value={manualSyncData.orderId}
+                              onChange={(e) => setManualSyncData({ ...manualSyncData, orderId: e.target.value })}
+                              className="w-full bg-[#0B1320] border border-amber-500/20 rounded-xl px-4 py-3 text-sm text-white focus:border-amber-500 outline-none"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-[10px] font-bold text-amber-400/70 uppercase mb-1.5 block">Customer Name</label>
+                              <input
+                                type="text"
+                                placeholder="Guest"
+                                value={manualSyncData.customer}
+                                onChange={(e) => setManualSyncData({ ...manualSyncData, customer: e.target.value })}
+                                className="w-full bg-[#0B1320] border border-amber-500/20 rounded-xl px-4 py-3 text-sm text-white outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-amber-400/70 uppercase mb-1.5 block">Keyword Item</label>
+                              <select
+                                value={manualSyncData.packKeyword}
+                                onChange={(e) => setManualSyncData({ ...manualSyncData, packKeyword: e.target.value })}
+                                className="w-full bg-[#0B1320] border border-amber-500/20 rounded-xl px-4 py-3 text-sm text-white outline-none"
+                              >
+                                {rcConfig.mapping?.map(m => (
+                                  <option key={m.keyword} value={m.keyword}>{m.pack} ({m.profile})</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <button
+                            onClick={handleManualSync}
+                            disabled={isSyncingOrder}
+                            className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-[#0B1320] font-black rounded-xl transition-all shadow-lg shadow-amber-500/10 flex items-center justify-center gap-2 active:scale-[0.98]"
+                          >
+                            {isSyncingOrder ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle size={20} />}
+                            VALIDASI & GENERATE SEKARANG
+                          </button>
+                        </div>
+                        <div className="absolute top-0 right-0 p-8 opacity-5">
+                          <AlertTriangle size={120} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* FULL-WIDTH AUTO PROVISIONING CARD */}
+                    <div className="lg:col-span-2 bg-gradient-to-br from-[#151D2F] to-[#1A253E] border border-[#26314A] rounded-2xl p-8 shadow-xl">
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-emerald-500/10 rounded-lg"><Zap size={20} className="text-emerald-400" /></div>
+                          <div>
+                            <h2 className="text-xl font-bold text-white">One-Click Router Provisioning</h2>
+                            <p className="text-xs text-slate-500 mt-0.5">Kirim konfigurasi otomatis ke MikroTik Anda dalam 1 klik</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                        <div className="p-4 bg-[#0B1320] rounded-xl border border-[#26314A] flex items-start gap-3">
+                          <CheckCircle size={18} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-bold text-white">Enable API Service</p>
+                            <p className="text-[10px] text-slate-500 mt-1">Mengaktifkan layanan API di port 8728 secara otomatis</p>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-[#0B1320] rounded-xl border border-[#26314A] flex items-start gap-3">
+                          <CheckCircle size={18} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-bold text-white">Create Hotspot Profile</p>
+                            <p className="text-[10px] text-slate-500 mt-1">Membuat profil "NetVocher-Profile" dengan batas 1 user per voucher</p>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-[#0B1320] rounded-xl border border-[#26314A] flex items-start gap-3">
+                          <CheckCircle size={18} className="text-emerald-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-bold text-white">Auto-Create Vouchers</p>
+                            <p className="text-[10px] text-slate-500 mt-1">Setiap pembayaran Runchise → hotspot user otomatis terdaftar di router</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={handleSetupRouter}
+                          disabled={isProvisioning}
+                          className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98] flex items-center justify-center gap-3 disabled:opacity-50"
+                        >
+                          {isProvisioning ? <RefreshCw size={20} className="animate-spin" /> : <Zap size={20} />}
+                          {isProvisioning ? 'Sending Configuration...' : 'Setup Router Otomatis'}
+                        </button>
+                        <div className="flex items-start gap-2 p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl flex-1">
+                          <AlertTriangle size={16} className="text-amber-400 mt-0.5 flex-shrink-0" />
+                          <p className="text-[10px] text-amber-300/70 leading-relaxed">
+                            <strong className="text-amber-400">Perhatian:</strong> Pastikan IP, Username dan Password MikroTik sudah benar dan tersimpan sebelum menekan tombol ini. Fitur API di MikroTik harus sudah aktif.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            ) : activeTab === 'Active Logs' ? (
+              <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h2 className="text-2xl font-black text-white tracking-tight">Log User Aktif</h2>
+                    <p className="text-slate-500 text-sm font-medium">Monitoring perangkat yang sedang terhubung ke WiFi secara real-time</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                      Live Monitoring
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-[#151D2F] border border-[#26314A] rounded-3xl overflow-hidden shadow-2xl">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-[#1A233A]/50 text-slate-500 font-bold text-[10px] uppercase tracking-[0.15em] border-b border-[#26314A]">
+                          <th className="px-6 py-5">User / Voucher</th>
+                          <th className="px-6 py-5">IP Address</th>
+                          <th className="px-6 py-5">Mac Address</th>
+                          <th className="px-6 py-5">Uptime</th>
+                          <th className="px-6 py-5">Bytes Out</th>
+                          <th className="px-6 py-5 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#26314A]/50">
+                        {activeUsers.length > 0 ? activeUsers.map((user, idx) => (
+                          <tr key={idx} className="hover:bg-white/5 transition-colors group">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center text-blue-400">
+                                  <Users size={16} />
                                 </div>
+                                <div>
+                                  <p className="font-mono text-sm text-white font-bold tracking-wider">{user.user}</p>
+                                  {vouchers.find(v => v.code === user.user)?.details?.customer && (
+                                    <p className="text-[10px] text-blue-400 font-bold uppercase truncate max-w-[150px]">
+                                      {vouchers.find(v => v.code === user.user).details.customer}
+                                    </p>
+                                  )}
+                                  <p className="text-[10px] text-slate-500 font-medium">Server: {user.server}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-slate-300 text-sm font-medium">{user.address}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-slate-500 text-[11px] font-mono tracking-wider">{user['mac-address']}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <RefreshCw size={12} className="text-emerald-400 animate-spin-slow" />
+                                <span className="text-emerald-400 text-sm font-bold">{user.uptime}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-slate-400 text-[11px] font-bold">{(parseInt(user['bytes-out']) / 1024 / 1024).toFixed(2)} MB</span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 rounded-full text-[10px] font-black uppercase tracking-tighter">
+                                Connected
+                              </span>
+                            </td>
+                          </tr>
+                        )) : (
+                          <tr>
+                            <td colSpan="6" className="px-6 py-20 text-center">
+                              <div className="flex flex-col items-center gap-3 opacity-30">
+                                <WifiOff size={48} className="text-slate-500" />
+                                <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Tidak ada user yang sedang aktif</p>
                               </div>
                             </td>
                           </tr>
@@ -2560,553 +2754,1419 @@ export default function DashboardConcept3() {
                       </tbody>
                     </table>
                   </div>
-                  <div className="p-8 border-t border-white/[0.05] bg-black/10 flex justify-center">
-                    <button className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-[0.2em] transition-colors">
-                      Lihat Semua Database Pelanggan
-                    </button>
+                </div>
+              </div>
+            ) : activeTab === 'Logging' ? (
+              <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h2 className="text-2xl font-black text-white tracking-tight">System Logging</h2>
+                    <p className="text-slate-500 text-sm font-medium">Log aktivitas sistem dan kejadian langsung dari router MikroTik</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                      System Feed
+                    </div>
                   </div>
                 </div>
 
-                {/* Top Spenders & Insights */}
-                <div className="space-y-8">
-                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] p-8 lg:p-10 shadow-2xl relative overflow-hidden">
-                    <div className="relative z-10">
-                      <h3 className="text-xl font-black text-white tracking-tight mb-2">Top Customers</h3>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-8">Pelanggan dengan loyalitas tertinggi</p>
-
-                      <div className="space-y-6">
-                        {Array.from(new Set(vouchers.map(v => v.details?.customer || 'Guest User')))
-                          .map(name => {
-                            const userVouchers = vouchers.filter(v => (v.details?.customer || 'Guest User') === name);
-                            const totalSpend = userVouchers.reduce((acc, v) => acc + (parseInt(v.price.replace(/[^\d]/g, '')) || 0), 0);
-                            return { name, count: userVouchers.length, totalSpend };
-                          })
-                          .sort((a, b) => b.totalSpend - a.totalSpend)
-                          .slice(0, 4)
-                          .map((customer, i) => {
-                            return (
-                              <div key={i} className="flex items-center justify-between group">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-white/5 flex items-center justify-center overflow-hidden">
-                                    <div className="w-full h-full bg-gradient-to-tr from-blue-600/40 to-indigo-600/40" />
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-white font-black uppercase">{customer.name}</p>
-                                    <p className="text-[9px] text-slate-500 font-bold uppercase">{customer.count} Pesanan</p>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-[11px] text-emerald-400 font-black">Rp {customer.totalSpend.toLocaleString()}</p>
-                                  <div className="h-1 w-12 bg-emerald-500/20 rounded-full mt-1 overflow-hidden">
-                                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: '80%' }} />
-                                  </div>
-                                </div>
+                <div className="bg-[#0B1320] border border-[#26314A] rounded-3xl overflow-hidden shadow-2xl">
+                  <div className="max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500/20">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 z-20">
+                        <tr className="bg-[#121929] text-slate-500 font-bold text-[10px] uppercase tracking-[0.15em] border-b border-[#26314A]">
+                          <th className="px-6 py-4 w-32">Waktu</th>
+                          <th className="px-6 py-4 w-40">Topics</th>
+                          <th className="px-6 py-4">Pesan / Aktivitas</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#26314A]/40 font-mono text-[11px]">
+                        {mtLogs.length > 0 ? [...mtLogs].reverse().map((log, idx) => (
+                          <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="px-6 py-3 text-slate-500 whitespace-nowrap">{log.time}</td>
+                            <td className="px-6 py-3">
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${log.topics.includes('error') ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                log.topics.includes('warning') ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                  'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                }`}>
+                                {log.topics}
+                              </span>
+                            </td>
+                            <td className={`px-6 py-3 ${log.message.toLowerCase().includes('failed') || log.message.toLowerCase().includes('error') ? 'text-red-400/90' : 'text-slate-300'
+                              }`}>
+                              {log.message}
+                            </td>
+                          </tr>
+                        )) : (
+                          <tr>
+                            <td colSpan="3" className="px-6 py-20 text-center">
+                              <div className="flex flex-col items-center gap-3 opacity-30">
+                                <MessageSquare size={48} className="text-slate-600" />
+                                <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Belum ada log yang tersedia</p>
                               </div>
-                            );
-                          })}
-                      </div>
-                    </div>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-
-                  <div className="bg-blue-600 border border-blue-500 rounded-[2.5rem] p-8 lg:p-10 shadow-2xl relative overflow-hidden group cursor-pointer">
-                    <div className="absolute top-0 right-0 p-8 opacity-20 group-hover:scale-110 transition-transform duration-500">
-                      <Zap size={100} />
+                </div>
+              </div>
+            ) : activeTab === 'Access Point' ? (
+              <div className="space-y-8 animate-in slide-in-from-right duration-500 pb-20">
+                <div className="bg-[#151D2F] border border-[#26314A] rounded-[2.5rem] p-8 lg:p-10 shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-10 opacity-5">
+                    <Wifi size={160} />
+                  </div>
+                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
+                    <div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-blue-500/10 text-blue-400 rounded-2xl">
+                          <Activity size={24} />
+                        </div>
+                        <h2 className="text-3xl font-black text-white tracking-tight">Koneksi AP / Router</h2>
+                      </div>
+                      <p className="text-slate-500 text-sm font-medium max-w-xl leading-relaxed">
+                        Monitoring dan kelola infrastruktur jaringan Anda. Dashboard akan memantau status setiap perangkat secara real-time.
+                      </p>
                     </div>
-                    <div className="relative z-10">
-                      <h3 className="text-xl font-black text-white tracking-tight mb-2">Loyalty Program</h3>
-                      <p className="text-[11px] text-blue-100/70 font-bold uppercase tracking-widest mb-6">Berikan reward ke pelanggan setia</p>
-                      <ul className="space-y-3 mb-8">
-                        <li className="flex items-center gap-2 text-[10px] text-white font-bold uppercase">
-                          <CheckCircle size={14} className="text-cyan-300" /> Diskon Paket 24 Jam
-                        </li>
-                        <li className="flex items-center gap-2 text-[10px] text-white font-bold uppercase">
-                          <CheckCircle size={14} className="text-cyan-300" /> Akses Prioritas Speed
-                        </li>
-                      </ul>
+                    <div className="flex items-center gap-4">
                       <button
-                        onClick={() => setShowRewardModal(true)}
-                        className="w-full py-4 bg-white text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xl hover:bg-blue-50 transition-all active:scale-95"
+                        onClick={handleDiscovery}
+                        className="px-8 py-4 bg-emerald-600/10 border border-emerald-500/20 text-emerald-400 font-black text-xs uppercase tracking-[0.2em] rounded-2xl hover:bg-emerald-600/20 transition-all flex items-center gap-3 active:scale-95 group shadow-lg shadow-emerald-500/5"
                       >
-                        Kelola Reward
+                        <RefreshCw size={18} className="group-hover:rotate-180 transition-transform duration-700" />
+                        Discover Unit
+                      </button>
+                      <button
+                        onClick={() => setShowInfraModal(!showInfraModal)}
+                        className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] rounded-2xl transition-all shadow-xl shadow-blue-600/30 active:scale-95 flex items-center gap-3"
+                      >
+                        <Plus size={20} />
+                        Tambah Manual
                       </button>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          ) : activeTab === 'Support' ? (
-            <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500">
-              <div className="bg-gradient-to-br from-[#151D2F] to-[#1A253E] border border-blue-500/20 rounded-[2.5rem] p-10 lg:p-14 text-center relative overflow-hidden shadow-2xl">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent" />
-                <div className="relative z-10 flex flex-col items-center">
-                  <div className="w-20 h-20 rounded-3xl bg-blue-600/10 flex items-center justify-center mb-8 ring-1 ring-blue-500/30">
-                    <HelpCircle size={40} className="text-blue-400" />
-                  </div>
-                  <h2 className="text-4xl font-black text-white tracking-tight mb-4">Butuh Bantuan Teknis?</h2>
-                  <p className="text-slate-400 text-lg font-medium max-w-xl mx-auto leading-relaxed">
-                    Tim support kami siap membantu Anda mengoptimalkan penggunaan <span className="text-blue-400">NetVocher Dashboard</span> untuk bisnis Anda.
-                  </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mt-12">
-                    <a href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer" className="flex items-center gap-6 p-6 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/20 rounded-3xl transition-all group">
-                      <div className="w-14 h-14 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
-                        <Zap size={24} />
+                {/* MANUAL AP CONFIGURATION FORM (Collapsible) */}
+                {showInfraModal && (
+                  <div className="bg-[#151D2F] border border-blue-500/30 rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg"><Settings size={20} /></div>
+                      <h3 className="text-lg font-bold text-white">Konfigurasi Unit Baru</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Nama / Nama Area</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: AP Lobby, AP Lantai 2"
+                          value={editingAP.name}
+                          onChange={(e) => setEditingAP({ ...editingAP, name: e.target.value })}
+                          className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none"
+                        />
                       </div>
-                      <div className="text-left">
-                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">WhatsApp Support</p>
-                        <p className="text-white font-bold">Respon Cepat (24/7)</p>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">IP Address Router</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: 192.168.88.10"
+                          value={editingAP.ip}
+                          onChange={(e) => setEditingAP({ ...editingAP, ip: e.target.value })}
+                          className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none"
+                        />
                       </div>
-                      <ChevronRight className="ml-auto text-slate-600 group-hover:text-emerald-400 transition-colors" />
-                    </a>
-                    <div className="flex items-center gap-6 p-6 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 rounded-3xl transition-all group cursor-pointer">
-                      <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
-                        <FileText size={24} />
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Port Ether (MikroTik)</label>
+                        <select
+                          value={editingAP.port}
+                          onChange={(e) => setEditingAP({ ...editingAP, port: e.target.value })}
+                          className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none appearance-none"
+                        >
+                          <option value="">Pilih Port (Otomatis)</option>
+                          {mtInterfaces.map(iface => (
+                            <option key={iface['.id']} value={iface.name}>{iface.name} ({iface.type})</option>
+                          ))}
+                          {mtInterfaces.length === 0 && (
+                            <>
+                              {[...Array(24)].map((_, i) => (
+                                <option key={i} value={`ether${i + 1}`}>Ether {i + 1}</option>
+                              ))}
+                              <option value="wlan1">WLAN 1 (Internal)</option>
+                            </>
+                          )}
+                        </select>
                       </div>
-                      <div className="text-left">
-                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Dokumentasi</p>
-                        <p className="text-white font-bold">Panduan Penggunaan</p>
+                      <div className="flex items-end">
+                        <button
+                          onClick={addManualAP}
+                          disabled={!editingAP.name || !editingAP.ip}
+                          className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-xl transition-all"
+                        >
+                          Simpan Perangkat
+                        </button>
                       </div>
-                      <ChevronRight className="ml-auto text-slate-600 group-hover:text-blue-400 transition-colors" />
+                    </div>
+                  </div>
+                )}
+
+                {/* MANUAL INFRASTRUCTURE LIST */}
+                {infraConfig.accessPoints?.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Infrastruktur Terdaftar</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                      {infraConfig.accessPoints.map((ap) => (
+                        <div key={ap.id} className="bg-gradient-to-br from-[#1A253A] to-[#151D2F] border border-blue-500/20 rounded-3xl p-6 relative overflow-hidden group">
+                          <div className="absolute top-4 right-4 z-20">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === ap.id ? null : ap.id) }}
+                              className="p-2 text-slate-500 hover:text-white bg-[#0B1320]/50 rounded-lg backdrop-blur-sm transition-all"
+                            >
+                              <MoreHorizontal size={18} />
+                            </button>
+                            {activeMenuId === ap.id && (
+                              <div className="absolute top-full right-0 mt-2 w-32 bg-[#1A233A] border border-[#26314A] rounded-xl shadow-2xl overflow-hidden py-1 z-30">
+                                <button onClick={() => handleEditManualAP(ap)} className="w-full px-4 py-2 text-left text-xs text-white hover:bg-blue-600 transition-colors flex items-center gap-2">
+                                  <Settings size={12} /> Edit
+                                </button>
+                                <button onClick={() => removeManualAP(ap.id)} className="w-full px-4 py-2 text-left text-xs text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2">
+                                  <XCircle size={12} /> Hapus
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center mb-4">
+                            <Server size={24} />
+                          </div>
+                          <h4 className="text-white font-bold text-lg mb-1">{ap.name}</h4>
+                          <div className="flex items-center gap-1.5 mb-3">
+                            {infraStatus.find(s => s.id === ap.id)?.online ? (
+                              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded-md">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-tight">Terhubung</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500/10 border border-red-500/20 rounded-md">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                <span className="text-[10px] font-black text-red-400 uppercase tracking-tight">Terputus</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center text-[10px]">
+                              <span className="text-slate-500">IP ADDRESS</span>
+                              <span className="text-blue-400 font-bold">{ap.ip}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[10px]">
+                              <span className="text-slate-500">MIKROTIK PORT</span>
+                              <span className="text-emerald-400 font-black uppercase">{ap.port || 'N/A'}</span>
+                            </div>
+                          </div>
+                          <div className="mt-4 pt-4 border-t border-white/5 flex gap-2">
+                            <span className="px-2 py-1 bg-blue-600/10 text-blue-400 rounded text-[9px] font-bold uppercase">Manual Config</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-8">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Deteksi Infrastruktur LAN (Auto-Discovery)</h3>
+                      <p className="text-[10px] text-slate-600 mt-1 font-bold">Menampilkan perangkat yang terdeteksi pada Port Ethernet MikroTik.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Scanning Network...</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {discoveredDevices.length > 0 ? discoveredDevices.map((device, idx) => (
+                      <div key={idx} className="bg-[#151D2F] border border-[#26314A] rounded-3xl p-6 hover:border-blue-500/30 transition-all group relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                          <Server size={80} />
+                        </div>
+                        <div className="flex items-center gap-4 mb-4 relative z-10">
+                          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                            <Wifi size={24} />
+                          </div>
+                          <div className="flex-1 overflow-hidden">
+                            <h3 className="text-white font-bold text-lg truncate">{device.name || 'Unknown Node'}</h3>
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[9px] font-black uppercase rounded-md">Online</span>
+                              <span className="text-[10px] text-slate-500 font-bold tracking-tight">{device.platform || 'General'}</span>
+                            </div>
+                          </div>
+                          <div className="relative">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === device.activeId ? null : device.activeId) }}
+                              className="p-2 text-slate-500 hover:text-white"
+                            >
+                              <MoreHorizontal size={18} />
+                            </button>
+                            {activeMenuId === device.activeId && (
+                              <div className="absolute top-full right-0 mt-2 w-48 bg-[#1A233A] border border-[#26314A] rounded-xl shadow-2xl overflow-hidden py-1 z-30">
+                                <button
+                                  onClick={() => {
+                                    setEditingAP({ name: device.name, ip: device.ip, port: device.port });
+                                    setShowInfraModal(true);
+                                    setActiveMenuId(null);
+                                  }}
+                                  className="w-full px-4 py-2 text-left text-xs text-blue-400 hover:bg-blue-600 hover:text-white transition-colors flex items-center gap-2"
+                                >
+                                  <Plus size={12} /> Daftarkan Unit
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 relative z-10">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-500">IP Link</span>
+                            <span className="text-white font-mono font-bold bg-[#0B1320] px-2 py-1 rounded">{device.ip}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-500">Physical Port</span>
+                            <span className="text-emerald-400 font-black uppercase flex items-center gap-1.5">
+                              <ArrowUpRight size={10} />
+                              {device.port} (Ethernet)
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-500">Identity MAC</span>
+                            <span className="text-slate-400 font-mono text-[10px]">{device.mac}</span>
+                          </div>
+                          {device.version && (
+                            <div className="mt-4 pt-4 border-t border-[#26314A]">
+                              <p className="text-[10px] text-slate-500 uppercase font-black mb-1">Versi Perangkat</p>
+                              <p className="text-xs text-slate-300 italic">{device.version}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="col-span-full py-20 bg-[#151D2F] border border-[#26314A] border-dashed rounded-3xl text-center">
+                        <div className="inline-flex w-16 h-16 rounded-full bg-slate-800 items-center justify-center mb-4">
+                          <WifiOff size={32} className="text-slate-500" />
+                        </div>
+                        <h3 className="text-white font-bold text-lg">Tidak Ada Perangkat LAN Terdeteksi</h3>
+                        <p className="text-slate-500 text-sm">Sistem discovery sedang aktif. Pastikan Access Point dengan MNDP aktif terhubung ke Ethernet port.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : activeTab === 'Reports' ? (
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-700">
+                {/* Report Header Metrics */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Total Pendapatan</p>
+                    <h3 className="text-3xl font-black text-white tracking-tight mb-2">
+                      <CountUp end={stats?.revenue?.total || 0} prefix="Rp " />
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-400 text-[10px] font-black tracking-widest">+12.5%</span>
+                      <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Dari Bulan Lalu</span>
+                    </div>
+                  </div>
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Voucher Terjual</p>
+                    <h3 className="text-3xl font-black text-white tracking-tight mb-2">
+                      <CountUp end={vouchers.length || 0} />
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-blue-400 text-[10px] font-black tracking-widest">+42 Unit</span>
+                      <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Hari Ini</span>
+                    </div>
+                  </div>
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Rata-rata Order</p>
+                    <h3 className="text-3xl font-black text-white tracking-tight mb-2">
+                      <CountUp end={Math.round((stats?.revenue?.total || 0) / (vouchers.length || 1))} prefix="Rp " />
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Per Transaksi</span>
+                    </div>
+                  </div>
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Efisiensi Jaringan</p>
+                    <h3 className="text-3xl font-black text-white tracking-tight mb-2">
+                      <CountUp end={98.8} decimals={1} suffix="%" />
+                    </h3>
+                    <div className="flex items-center gap-2 text-emerald-400">
+                      <CheckCircle size={12} />
+                      <span className="text-[10px] font-black tracking-widest uppercase">Excellent</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="absolute -bottom-24 -right-24 opacity-5 pointer-events-none">
-                  <HelpCircle size={300} />
-                </div>
-              </div>
+                {/* Main Charts Row */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Revenue Trend Chart */}
+                  <div className="lg:col-span-2 bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] p-8 lg:p-10 shadow-2xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-10 opacity-5">
+                      <FileText size={120} />
+                    </div>
+                    <div className="flex items-center justify-between mb-10 relative z-10">
+                      <div>
+                        <h2 className="text-2xl font-black text-white tracking-tight mb-1">Tren Pendapatan Mingguan</h2>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Analisis performa 7 hari terakhir</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black uppercase tracking-widest">
+                          Actual Revenue
+                        </div>
+                      </div>
+                    </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-8 shadow-xl">
-                  <h4 className="text-white font-black uppercase tracking-widest text-[10px] mb-4">Versi Aplikasi</h4>
-                  <p className="text-2xl font-black text-white">v3.2.0-PRO</p>
-                  <span className="text-emerald-400 text-[9px] font-black uppercase tracking-tighter bg-emerald-500/10 px-2 py-0.5 rounded-md mt-2 inline-block">Latest Stable</span>
-                </div>
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-8 shadow-xl">
-                  <h4 className="text-white font-black uppercase tracking-widest text-[10px] mb-4">Sistem Status</h4>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <p className="text-xl font-bold text-white">All Systems Go</p>
+                    <div className="h-[350px] w-full relative z-10">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={stats?.revenueVsTarget || []}>
+                          <defs>
+                            <linearGradient id="revenueReport" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#26314A" />
+                          <XAxis
+                            dataKey="name"
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: '#64748b', fontSize: 11, fontWeight: 'bold' }}
+                            dy={15}
+                          />
+                          <YAxis
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: '#64748b', fontSize: 11, fontWeight: 'bold' }}
+                            tickFormatter={(val) => `Rp ${val / 1000}k`}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#0D1526',
+                              border: '1px solid rgba(255,255,255,0.1)',
+                              borderRadius: '16px',
+                              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)'
+                            }}
+                            itemStyle={{ color: '#fff' }}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="actual"
+                            stroke="#3b82f6"
+                            strokeWidth={4}
+                            fill="url(#revenueReport)"
+                            animationDuration={2000}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Package Distribution Map */}
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] p-8 lg:p-10 shadow-2xl flex flex-col justify-between">
+                    <div>
+                      <h2 className="text-2xl font-black text-white tracking-tight mb-1">Paket Populer</h2>
+                      <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-10">Persentase Penjualan Paket</p>
+
+                      <div className="space-y-6">
+                        {[
+                          { name: '1 Hour', color: 'bg-blue-500', icon: Zap },
+                          { name: '1 Day', color: 'bg-emerald-500', icon: Calendar },
+                          { name: '1 Week', color: 'bg-indigo-500', icon: Shield },
+                        ].map((p) => {
+                          const total = vouchers.length || 1;
+                          const count = vouchers.filter(v => v.pack === p.name).length;
+                          const percent = Math.round((count / total) * 100);
+
+                          return (
+                            <div key={p.name} className="space-y-2">
+                              <div className="flex justify-between items-center text-xs font-bold uppercase tracking-widest">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-2 h-2 rounded-full ${p.color}`} />
+                                  <span className="text-white">{p.name}</span>
+                                </div>
+                                <span className="text-slate-500">{percent}%</span>
+                              </div>
+                              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${p.color} rounded-full transition-all duration-1000`}
+                                  style={{ width: `${percent}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="mt-10 p-6 bg-blue-500/10 border border-blue-500/20 rounded-3xl">
+                      <p className="text-xs text-blue-400 font-black uppercase tracking-widest mb-2 flex items-center gap-2">
+                        <Activity size={12} /> Insight Hari Ini
+                      </p>
+                      <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
+                        Paket <strong className="text-white">1 Hour</strong> tetap menjadi pilihan utama dengan volume penjualan tertinggi di jam makan siang.
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-8 shadow-xl">
-                  <h4 className="text-white font-black uppercase tracking-widest text-[10px] mb-4">Lisensi</h4>
-                  <p className="text-xl font-bold text-blue-400 uppercase">Enterprise Plan</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-12 text-center flex flex-col items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-2">
-                <Activity size={32} className="text-slate-500" />
-              </div>
-              <h2 className="text-xl font-bold text-white">Modul Sedang Dikembangkan</h2>
-              <p className="text-slate-400 max-w-sm">
-                Fungsi menu <span className="text-blue-400">"{activeTab}"</span> masih dalam tahap integrasi sistem. Dashboard Concept 3 fokus pada visualisasi data real-time.
-              </p>
-              <button
-                onClick={() => setActiveTab('Overview')}
-                className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-              >
-                Kembali ke Dashboard
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* GENERATE VOUCHER MODAL (Global - accessible from any tab) */}
-      {showGenerateModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" onClick={() => setShowGenerateModal(false)}>
-          <div className="bg-[#151D2F] border border-[#26314A] rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()}>
-            <div className="p-8 border-b border-[#26314A] bg-[#1A233A]/50 flex justify-between items-center">
-              <div>
-                <h3 className="text-2xl font-black text-white tracking-tight">Generate Voucher</h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Manual Hotspot Creation</p>
-              </div>
-              <button onClick={() => setShowGenerateModal(false)} className="text-slate-500 hover:text-white transition-colors">
-                <XCircle size={24} />
-              </button>
-            </div>
-
-            <div className="p-8 space-y-8">
-              {/* Package Selection */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Pilih Paket Durasi</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {['1 Hour', '1 Day', '1 Week'].map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setGenPack(p)}
-                      className={`py-4 rounded-2xl border-2 transition-all font-bold text-sm ${genPack === p
-                        ? 'bg-blue-600/10 border-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.2)]'
-                        : 'bg-[#0B1320] border-[#26314A] text-slate-500 hover:border-slate-700'
-                        }`}
-                    >
-                      {p}
+                {/* Transactions History Table */}
+                <div className="bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] overflow-hidden shadow-2xl">
+                  <div className="p-8 lg:p-10 border-b border-white/[0.05] flex justify-between items-center bg-[#1A233A]/30">
+                    <div>
+                      <h2 className="text-2xl font-black text-white tracking-tight">Riwayat Penjualan Terbaru</h2>
+                      <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Daftar transaksi sinkronisasi POS</p>
+                    </div>
+                    <button className="px-6 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all">
+                      Lihat Semua
                     </button>
-                  ))}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-black/20 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] border-b border-white/[0.05]">
+                          <th className="px-10 py-6">ID Order</th>
+                          <th className="px-10 py-6">Customer</th>
+                          <th className="px-10 py-6">Item / Paket</th>
+                          <th className="px-10 py-6">Pendapatan</th>
+                          <th className="px-10 py-6 text-right">Metode</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.03]">
+                        {vouchers.slice(0, 5).map((v, i) => (
+                          <tr key={i} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="px-10 py-6 font-mono text-xs text-blue-400 font-bold tracking-wider">
+                              {v.details?.orderNo || 'POS-OFFLINE'}
+                            </td>
+                            <td className="px-10 py-6 text-xs text-white font-bold uppercase tracking-tight">
+                              {v.details?.customer || 'Guest User'}
+                            </td>
+                            <td className="px-10 py-6">
+                              <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                {v.pack}
+                              </span>
+                            </td>
+                            <td className="px-10 py-6 text-xs text-white font-black">
+                              {v.price}
+                            </td>
+                            <td className="px-10 py-6 text-right">
+                              <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">
+                                {v.details?.payment || 'CASH'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                        {vouchers.length === 0 && (
+                          <tr>
+                            <td colSpan="5" className="px-10 py-20 text-center opacity-30">
+                              <Activity size={40} className="mx-auto mb-4" />
+                              <p className="text-xs font-black uppercase tracking-widest">Belum Ada Data Laporan</p>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-
-              {/* Shared Users */}
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Shared Users (Limit Device)</label>
-                  <span className="bg-blue-500/10 text-blue-400 text-xs font-black px-2 py-1 rounded-md">{genShared} Devices</span>
+            ) : activeTab === 'Customers' ? (
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-700">
+                {/* User Directory Metrics */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
+                      <Users size={80} />
+                    </div>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Total Pelanggan</p>
+                    <h3 className="text-3xl font-black text-white tracking-tight mb-2">
+                      <CountUp end={[...new Set(vouchers.map(v => v.details?.customer || 'Guest User'))].length} />
+                    </h3>
+                    <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+                      Database Sinkronisasi POS
+                    </p>
+                  </div>
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
+                      <Activity size={80} />
+                    </div>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">User Aktif</p>
+                    <h3 className="text-3xl font-black text-emerald-400 tracking-tight mb-2">
+                      <CountUp end={activeUsers.length} />
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Live Monitoring</span>
+                    </div>
+                  </div>
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
+                      <Zap size={80} />
+                    </div>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Returning Rate</p>
+                    <h3 className="text-3xl font-black text-blue-400 tracking-tight mb-2">
+                      <CountUp end={
+                        (() => {
+                          const uniqueUsers = Array.from(new Set(vouchers.map(v => v.details?.customer || 'Guest User')));
+                          if (uniqueUsers.length === 0) return 0;
+                          const returners = uniqueUsers.filter(name => vouchers.filter(v => (v.details?.customer || 'Guest User') === name).length > 1);
+                          return Math.round((returners.length / uniqueUsers.length) * 100);
+                        })()
+                      } suffix="%" />
+                    </h3>
+                    <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Kesetiaan Pelanggan</span>
+                  </div>
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-6 shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-transform duration-500">
+                      <FileText size={80} />
+                    </div>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Total Pendapatan</p>
+                    <h3 className="text-3xl font-black text-emerald-400 tracking-tight mb-2">
+                      <CountUp end={vouchers.reduce((acc, v) => acc + (parseInt(v.price.replace(/[^\d]/g, '')) || 0), 0)} prefix="Rp " />
+                    </h3>
+                    <span className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Akumulasi Omset Pesanan</span>
+                  </div>
                 </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  step="1"
-                  value={genShared}
-                  onChange={(e) => setGenShared(e.target.value)}
-                  className="w-full h-2 bg-[#0B1320] rounded-lg appearance-none cursor-pointer accent-blue-500 border border-[#26314A]"
-                />
-                <div className="flex justify-between text-[10px] text-slate-600 font-bold mt-2 px-1">
-                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
+
+                {/* User Directory Layout */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* User List Table */}
+                  <div className="lg:col-span-2 bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] overflow-hidden shadow-2xl">
+                    <div className="p-8 border-b border-white/[0.05] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#1A233A]/30">
+                      <div>
+                        <h2 className="text-2xl font-black text-white tracking-tight">Pelanggan Terdaftar</h2>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Daftar user berdasarkan transaksi POS</p>
+                      </div>
+                      <div className="relative w-full md:w-64">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                        <input
+                          type="text"
+                          placeholder="Cari nama, kode voucher, atau ID order..."
+                          value={customerSearch}
+                          onChange={(e) => setCustomerSearch(e.target.value)}
+                          className="w-full bg-black/20 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-xs text-white outline-none focus:border-blue-500/50 transition-all font-medium"
+                        />
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-black/20 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] border-b border-white/[0.05]">
+                            <th className="px-10 py-6">Customer Name</th>
+                            <th className="px-10 py-6">Last Order</th>
+                            <th className="px-10 py-6">Total Trx</th>
+                            <th className="px-10 py-6">Last Pack</th>
+                            <th className="px-10 py-6 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/[0.03]">
+                          {Array.from(new Set(vouchers.map(v => v.details?.customer || 'Guest User')))
+                            .filter(name => {
+                              const search = customerSearch.toLowerCase();
+                              const userVouchers = vouchers.filter(v => (v.details?.customer || 'Guest User') === name);
+                              return name.toLowerCase().includes(search) ||
+                                userVouchers.some(v =>
+                                  v.code.toLowerCase().includes(search) ||
+                                  (v.details?.orderNo && v.details.orderNo.toLowerCase().includes(search))
+                                );
+                            })
+                            .slice(0, 10).map((name, i) => {
+                              const userVouchers = vouchers.filter(v => (v.details?.customer || 'Guest User') === name);
+                              const lastVoucher = userVouchers[0];
+                              return (
+                                <tr key={i} className="hover:bg-white/[0.02] transition-colors group">
+                                  <td className="px-10 py-6">
+                                    <div className="flex items-center gap-4">
+                                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 flex items-center justify-center border border-white/5 ring-1 ring-white/5">
+                                        <span className="text-blue-400 font-black text-[10px] uppercase">{name.substring(0, 2)}</span>
+                                      </div>
+                                      <div>
+                                        <p className="text-xs text-white font-black uppercase tracking-tight">{name}</p>
+                                        <p className="text-[9px] text-slate-500 font-bold uppercase mt-0.5">Verified Customer</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-10 py-6">
+                                    <p className="text-[11px] text-slate-400 font-medium whitespace-nowrap">
+                                      {lastVoucher?.date ? new Date(lastVoucher.date).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A'}
+                                    </p>
+                                  </td>
+                                  <td className="px-10 py-6">
+                                    <span className="inline-block whitespace-nowrap px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-lg text-[10px] font-black text-blue-400">
+                                      {userVouchers.length} Transaksi
+                                    </span>
+                                  </td>
+                                  <td className="px-10 py-6">
+                                    <span className="text-xs text-slate-300 font-bold whitespace-nowrap">{lastVoucher?.pack || 'N/A'}</span>
+                                  </td>
+                                  <td className="px-10 py-6 text-right">
+                                    <button onClick={() => { setSelectedCustomer({ name, userVouchers }); setShowCustomerModal(true); }} className="p-2.5 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-400 hover:text-white hover:bg-blue-600 transition-all shadow-lg active:scale-95 inline-flex items-center justify-center">
+                                      <span className="hidden xl:inline mr-2 text-[10px] font-black uppercase tracking-widest">Detail</span>
+                                      <ChevronRight size={16} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          {vouchers.length === 0 && (
+                            <tr>
+                              <td colSpan="5" className="px-10 py-24 text-center">
+                                <div className="flex flex-col items-center gap-4 opacity-30">
+                                  <Users size={48} className="text-slate-500" />
+                                  <div>
+                                    <p className="text-white font-black uppercase tracking-widest text-sm">Database Kosong</p>
+                                    <p className="text-slate-500 text-[10px] font-bold uppercase mt-1">Belum ada pelanggan yang tersinkronisasi</p>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="p-8 border-t border-white/[0.05] bg-black/10 flex justify-center">
+                      <button className="text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-[0.2em] transition-colors">
+                        Lihat Semua Database Pelanggan
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Top Spenders & Insights */}
+                  <div className="space-y-8">
+                    <div className="bg-[#151D2F] border border-white/[0.05] rounded-[2.5rem] p-8 lg:p-10 shadow-2xl relative overflow-hidden">
+                      <div className="relative z-10">
+                        <h3 className="text-xl font-black text-white tracking-tight mb-2">Top Customers</h3>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-8">Pelanggan dengan loyalitas tertinggi</p>
+
+                        <div className="space-y-6">
+                          {Array.from(new Set(vouchers.map(v => v.details?.customer || 'Guest User')))
+                            .map(name => {
+                              const userVouchers = vouchers.filter(v => (v.details?.customer || 'Guest User') === name);
+                              const totalSpend = userVouchers.reduce((acc, v) => acc + (parseInt(v.price.replace(/[^\d]/g, '')) || 0), 0);
+                              return { name, count: userVouchers.length, totalSpend };
+                            })
+                            .sort((a, b) => b.totalSpend - a.totalSpend)
+                            .slice(0, 4)
+                            .map((customer, i) => {
+                              return (
+                                <div key={i} className="flex items-center justify-between group">
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-white/5 flex items-center justify-center overflow-hidden">
+                                      <div className="w-full h-full bg-gradient-to-tr from-blue-600/40 to-indigo-600/40" />
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-white font-black uppercase">{customer.name}</p>
+                                      <p className="text-[9px] text-slate-500 font-bold uppercase">{customer.count} Pesanan</p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-[11px] text-emerald-400 font-black">Rp {customer.totalSpend.toLocaleString()}</p>
+                                    <div className="h-1 w-12 bg-emerald-500/20 rounded-full mt-1 overflow-hidden">
+                                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: '80%' }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-blue-600 border border-blue-500 rounded-[2.5rem] p-8 lg:p-10 shadow-2xl relative overflow-hidden group cursor-pointer">
+                      <div className="absolute top-0 right-0 p-8 opacity-20 group-hover:scale-110 transition-transform duration-500">
+                        <Zap size={100} />
+                      </div>
+                      <div className="relative z-10">
+                        <h3 className="text-xl font-black text-white tracking-tight mb-2">Loyalty Program</h3>
+                        <p className="text-[11px] text-blue-100/70 font-bold uppercase tracking-widest mb-6">Berikan reward ke pelanggan setia</p>
+                        <ul className="space-y-3 mb-8">
+                          <li className="flex items-center gap-2 text-[10px] text-white font-bold uppercase">
+                            <CheckCircle size={14} className="text-cyan-300" /> Diskon Paket 24 Jam
+                          </li>
+                          <li className="flex items-center gap-2 text-[10px] text-white font-bold uppercase">
+                            <CheckCircle size={14} className="text-cyan-300" /> Akses Prioritas Speed
+                          </li>
+                        </ul>
+                        <button
+                          onClick={() => setShowRewardModal(true)}
+                          className="w-full py-4 bg-white text-blue-600 font-black text-[10px] uppercase tracking-[0.2em] rounded-2xl shadow-xl hover:bg-blue-50 transition-all active:scale-95"
+                        >
+                          Kelola Reward
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+            ) : activeTab === 'Support' ? (
+              <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                <div className="bg-gradient-to-br from-[#151D2F] to-[#1A253E] border border-blue-500/20 rounded-[2.5rem] p-10 lg:p-14 text-center relative overflow-hidden shadow-2xl">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent" />
+                  <div className="relative z-10 flex flex-col items-center">
+                    <div className="w-20 h-20 rounded-3xl bg-blue-600/10 flex items-center justify-center mb-8 ring-1 ring-blue-500/30">
+                      <HelpCircle size={40} className="text-blue-400" />
+                    </div>
+                    <h2 className="text-4xl font-black text-white tracking-tight mb-4">Butuh Bantuan Teknis?</h2>
+                    <p className="text-slate-400 text-lg font-medium max-w-xl mx-auto leading-relaxed">
+                      Tim support kami siap membantu Anda mengoptimalkan penggunaan <span className="text-blue-400">NetVocher Dashboard</span> untuk bisnis Anda.
+                    </p>
 
-              {/* Rate Limit Selection */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Limit Kecepatan (Upload/Download)</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: 'Hemat (1 Mbps)', val: '1M/1M' },
-                    { label: 'Standar (3 Mbps)', val: '3M/3M' },
-                    { label: 'Turbo (5 Mbps)', val: '5M/5M' },
-                    { label: 'Extreme (10 Mbps)', val: '10M/10M' }
-                  ].map((r) => (
-                    <button
-                      key={r.val}
-                      onClick={() => setGenRateLimit(r.val)}
-                      className={`py-3 px-2 rounded-xl border-2 transition-all font-bold text-[11px] ${genRateLimit === r.val
-                        ? 'bg-emerald-600/10 border-emerald-500 text-emerald-400'
-                        : 'bg-[#0B1320] border-[#26314A] text-slate-500 hover:border-slate-700'
-                        }`}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mt-12">
+                      <a href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer" className="flex items-center gap-6 p-6 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/20 rounded-3xl transition-all group">
+                        <div className="w-14 h-14 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+                          <Zap size={24} />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">WhatsApp Support</p>
+                          <p className="text-white font-bold">Respon Cepat (24/7)</p>
+                        </div>
+                        <ChevronRight className="ml-auto text-slate-600 group-hover:text-emerald-400 transition-colors" />
+                      </a>
+                      <div className="flex items-center gap-6 p-6 bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 rounded-3xl transition-all group cursor-pointer">
+                        <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                          <FileText size={24} />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Dokumentasi</p>
+                          <p className="text-white font-bold">Panduan Penggunaan</p>
+                        </div>
+                        <ChevronRight className="ml-auto text-slate-600 group-hover:text-blue-400 transition-colors" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="absolute -bottom-24 -right-24 opacity-5 pointer-events-none">
+                    <HelpCircle size={300} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-8 shadow-xl">
+                    <h4 className="text-white font-black uppercase tracking-widest text-[10px] mb-4">Versi Aplikasi</h4>
+                    <p className="text-2xl font-black text-white">v3.2.0-PRO</p>
+                    <span className="text-emerald-400 text-[9px] font-black uppercase tracking-tighter bg-emerald-500/10 px-2 py-0.5 rounded-md mt-2 inline-block">Latest Stable</span>
+                  </div>
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-8 shadow-xl">
+                    <h4 className="text-white font-black uppercase tracking-widest text-[10px] mb-4">Sistem Status</h4>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <p className="text-xl font-bold text-white">All Systems Go</p>
+                    </div>
+                  </div>
+                  <div className="bg-[#151D2F] border border-white/[0.05] rounded-3xl p-8 shadow-xl">
+                    <h4 className="text-white font-black uppercase tracking-widest text-[10px] mb-4">Lisensi</h4>
+                    <p className="text-xl font-bold text-blue-400 uppercase">Enterprise Plan</p>
+                  </div>
                 </div>
               </div>
-
-              <div className="pt-4">
-                <button
-                  onClick={handleGenerateManual}
-                  disabled={isGeneratingVoucher}
-                  className="w-full mt-6 py-4 bg-blue-600 rounded-2xl font-black text-[10px] text-white uppercase tracking-widest hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/20 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {isGeneratingVoucher ? (
-                    <RefreshCw size={16} className="animate-spin" />
-                  ) : (
-                    <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" />
-                  )}
-                  {isGeneratingVoucher ? 'MEMPROSES...' : 'GENERATE SEKARANG'}
-                </button>
-                <p className="text-[10px] text-center text-slate-500 mt-4 leading-relaxed px-4">
-                  Voucher akan otomatis didaftarkan ke MikroTik dan muncul di tabel riwayat secara real-time.
+            ) : (
+              <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl p-12 text-center flex flex-col items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-2">
+                  <Activity size={32} className="text-slate-500" />
+                </div>
+                <h2 className="text-xl font-bold text-white">Modul Sedang Dikembangkan</h2>
+                <p className="text-slate-400 max-w-sm">
+                  Fungsi menu <span className="text-blue-400">"{activeTab}"</span> masih dalam tahap integrasi sistem. Dashboard Concept 3 fokus pada visualisasi data real-time.
                 </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PRINT BATCH MODAL */}
-      {
-        showPrintModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm print:hidden">
-            <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-              <div className="p-6 border-b border-[#26314A] flex justify-between items-center bg-[#1A233A]">
-                <div>
-                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                    <Printer size={20} className="text-blue-400" /> Print Batch Manager
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">Pilih voucher yang ingin dicetak secara massal.</p>
-                </div>
-                <button onClick={() => setShowPrintModal(false)} className="text-slate-500 hover:text-white transition-colors bg-[#26314A]/50 p-2 rounded-lg">
-                  <XCircle size={24} />
+                <button
+                  onClick={() => setActiveTab('Overview')}
+                  className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  Kembali ke Dashboard
                 </button>
               </div>
+            )}
+          </div>
+        </div>
 
-              <div className="flex-1 overflow-y-auto p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <div className="text-sm text-slate-300">
-                    <span className="font-bold text-white">{printSelection.length}</span> voucher dipilih
+        {/* GENERATE VOUCHERS MODAL (Premium Version) */}
+        {showGenerateModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-2xl overflow-y-auto py-10" onClick={() => setShowGenerateModal(false)}>
+            <div className="bg-[#151D2F] border border-white/[0.08] w-full max-w-xl rounded-[2.5rem] shadow-2xl relative overflow-hidden animate-in zoom-in-95 duration-300" onClick={(e) => e.stopPropagation()}>
+              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500" />
+              <div className="p-10">
+                <div className="flex items-center justify-between mb-10">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-500/10 text-blue-400 rounded-2xl">
+                      <Ticket size={28} />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black text-white tracking-tight">Generate Voucher</h2>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mt-1">Manual Hotspot Creation System</p>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setPrintSelection(vouchers.map(v => v.code))} className="text-xs font-medium text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10">Select All</button>
-                    <button onClick={() => setPrintSelection([])} className="text-xs font-medium text-slate-400 hover:text-slate-300 px-3 py-1.5 rounded-lg border border-[#26314A] hover:bg-white/5">Clear</button>
-                  </div>
+                  <button onClick={() => setShowGenerateModal(false)} className="p-2 text-slate-500 hover:text-white transition-all">
+                    <XCircle size={24} />
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {vouchers.map(v => (
-                    <div
-                      key={v.code}
-                      onClick={() => handleTogglePrintSelection(v.code)}
-                      className={`p-4 rounded-xl border cursor-pointer transition-all flex items-center gap-4 ${printSelection.includes(v.code) ? 'bg-blue-600/10 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative' : 'bg-[#1A233A] border-[#2A344D] hover:border-slate-500 hover:bg-[#2A344D]'}`}
+                <div className="space-y-8">
+                  {/* Package Selection */}
+                  <div className="space-y-4">
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Pilih Paket Durasi</label>
+                    <div className="grid grid-cols-3 gap-4">
+                      {['1 Hour', '1 Day', '1 Week'].map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setGenPack(p)}
+                          className={`py-4 rounded-2xl font-black text-xs uppercase tracking-wider transition-all border-2 ${genPack === p ? 'bg-blue-600 border-blue-400 text-white shadow-lg shadow-blue-600/25' : 'bg-[#0B1320] border-transparent text-slate-500 hover:border-white/10'}`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Shared Users */}
+                    <div className="space-y-4">
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Limit Perangkat (Shared)</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {['1', '2', '3', '5'].map((num) => (
+                          <button
+                            key={num}
+                            onClick={() => setGenShared(num)}
+                            className={`py-3 rounded-xl font-bold text-xs transition-all border ${genShared === num ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-[#0B1320] border-[#26314A] text-slate-500 hover:border-slate-500'}`}
+                          >
+                            {num} Devices
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Limit Kecepatan</label>
+                      <select
+                        value={genRateLimit}
+                        onChange={(e) => setGenRateLimit(e.target.value)}
+                        className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none"
+                      >
+                        <option value="1M/1M">Hemat (1 Mbps)</option>
+                        <option value="2M/5M">Standard (5 Mbps)</option>
+                        <option value="5M/10M">Turbo (10 Mbps)</option>
+                        <option value="10M/20M">Extreme (20 Mbps)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Kuota Data (Volume Limit)</label>
+                    <select
+                      value={genVolumeLimit}
+                      onChange={(e) => setGenVolumeLimit(e.target.value)}
+                      className="w-full bg-[#0B1320] border border-[#26314A] rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 outline-none"
                     >
-                      {printSelection.includes(v.code) && (
-                        <div className="absolute top-2 right-2 text-blue-400 rounded-full bg-[#1A233A]">
-                          <CheckCircle size={16} className="fill-blue-500 text-white" />
-                        </div>
-                      )}
-                      <div className="p-1.5 bg-white rounded-lg shrink-0">
-                        <QRCodeSVG value={v.magicLink || v.code} size={40} />
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <h4 className="font-mono text-white font-bold text-sm tracking-wider truncate">{v.code}</h4>
-                        <div className="flex justify-between items-center mt-1">
-                          <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">{v.pack}</span>
-                          <span className="text-xs text-emerald-400 font-medium">{v.price}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {vouchers.length === 0 && (
-                    <div className="col-span-full py-12 text-center text-slate-500 border border-dashed border-[#26314A] rounded-xl flex flex-col items-center gap-3">
-                      <Ticket size={32} className="opacity-50" />
-                      <p>Tidak ada voucher yang tersedia untuk dicetak.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+                      <option value="0">Tanpa Batas (Unlimited)</option>
+                      <option value="536870912">500 MB</option>
+                      <option value="1073741824">1 GB</option>
+                      <option value="2147483648">2 GB</option>
+                      <option value="5368709120">5 GB</option>
+                      <option value="10737418240">10 GB</option>
+                    </select>
+                  </div>
 
-              <div className="p-6 border-t border-[#26314A] bg-[#1A233A]/80 flex justify-end gap-3">
-                <button
-                  onClick={() => setShowPrintModal(false)}
-                  className="px-5 py-2.5 rounded-xl font-bold text-slate-300 hover:bg-white/5 border border-transparent hover:border-[#26314A] transition-all"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handlePrintSelected}
-                  disabled={printSelection.length === 0}
-                  className={`px-6 py-2.5 rounded-xl font-bold text-white flex items-center gap-2 shadow-lg transition-all ${printSelection.length > 0 ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/30' : 'bg-slate-700 text-slate-400 cursor-not-allowed hidden'}`}
-                >
-                  <Printer size={18} /> Print {printSelection.length} Voucher
-                </button>
+                  <div className="p-6 bg-blue-500/5 border border-blue-500/10 rounded-3xl flex items-start gap-4">
+                    <Activity size={20} className="text-blue-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-white mb-1">Status Sinkronisasi Router</p>
+                      <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                        Voucher akan otomatis terdaftar di MikroTik. Pastikan Router Status <strong className="text-emerald-400">ONLINE</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleGenerateManual}
+                    disabled={isGeneratingVoucher}
+                    className="w-full py-6 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black text-sm uppercase tracking-[0.3em] rounded-[1.5rem] transition-all shadow-2xl shadow-blue-600/20 active:scale-95 flex items-center justify-center gap-4"
+                  >
+                    {isGeneratingVoucher ? <RefreshCw className="animate-spin" size={20} /> : <Zap size={20} />}
+                    {isGeneratingVoucher ? 'Generating...' : 'Hasilkan Sekarang'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        )
-      }
+        )}
 
-      {/* REWARD RULES MODAL */}
-      {showRewardModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-[#0D1526] border border-white/10 rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl relative">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 via-cyan-400 to-blue-600" />
-
-            <div className="p-8 lg:p-10">
-              <div className="flex justify-between items-start mb-10">
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                      <Zap size={20} className="text-blue-400" />
-                    </div>
-                    <h2 className="text-3xl font-black text-white tracking-tight">Reward Strategy</h2>
+        {/* PRINT BATCH MODAL */}
+        {
+          showPrintModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm print:hidden">
+              <div className="bg-[#151D2F] border border-[#26314A] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="p-6 border-b border-[#26314A] flex justify-between items-center bg-[#1A233A]">
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                      <Printer size={20} className="text-blue-400" /> Print Batch Manager
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">Pilih voucher yang ingin dicetak secara massal.</p>
                   </div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Konfigurasi otomatisasi loyalitas pelanggan</p>
-                </div>
-                <button
-                  onClick={() => setShowRewardModal(false)}
-                  className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-500 hover:text-white transition-all"
-                >
-                  <XCircle size={24} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-                {/* Rule Item 1 */}
-                <div
-                  onClick={() => setRewardSettings(p => ({ ...p, buy10Get1: !p.buy10Get1 }))}
-                  className={`p-6 border rounded-3xl group transition-all cursor-pointer ${rewardSettings.buy10Get1 ? 'bg-blue-900/10 border-blue-500/30' : 'bg-[#151D2F] border-white/[0.05] hover:border-slate-500/30'}`}
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <div className={`p-3 rounded-2xl ${rewardSettings.buy10Get1 ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-500'}`}>
-                      <Ticket size={24} />
-                    </div>
-                    <div className={`flex h-6 w-11 items-center rounded-full p-1 transition-colors ${rewardSettings.buy10Get1 ? 'bg-blue-600/30' : 'bg-slate-800'}`}>
-                      <div className={`h-4 w-4 rounded-full shadow-sm transition-transform ${rewardSettings.buy10Get1 ? 'bg-blue-500 translate-x-5' : 'bg-slate-500'}`} />
-                    </div>
-                  </div>
-                  <h4 className="text-white font-black text-sm uppercase mb-2">Buy 10 Get 1 Free</h4>
-                  <p className="text-slate-500 text-[10px] font-bold leading-relaxed uppercase">Otomatis kirim voucher bonus setelah 10 kali transaksi terdeteksi di POS.</p>
+                  <button onClick={() => setShowPrintModal(false)} className="text-slate-500 hover:text-white transition-colors bg-[#26314A]/50 p-2 rounded-lg">
+                    <XCircle size={24} />
+                  </button>
                 </div>
 
-                {/* Rule Item 2 (Advanced Feature - Locked) */}
-                <div
-                  className="p-6 bg-[#151D2F] border border-white/[0.05] rounded-3xl opacity-50 grayscale cursor-not-allowed"
-                  onClick={() => alert('Fitur ini eksklusif untuk lisensi Enterprise.')}
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="p-3 bg-emerald-500/10 rounded-2xl text-emerald-400">
-                      <ArrowUpRight size={24} />
+                <div className="flex-1 overflow-y-auto p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="text-sm text-slate-300">
+                      <span className="font-bold text-white">{printSelection.length}</span> voucher dipilih
                     </div>
-                    <div className="flex h-6 w-11 items-center rounded-full bg-slate-800 p-1">
-                      <div className="h-4 w-4 rounded-full bg-slate-600 shadow-sm" />
+                    <div className="flex gap-2">
+                      <button onClick={() => setPrintSelection(vouchers.map(v => v.code))} className="text-xs font-medium text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10">Select All</button>
+                      <button onClick={() => setPrintSelection([])} className="text-xs font-medium text-slate-400 hover:text-slate-300 px-3 py-1.5 rounded-lg border border-[#26314A] hover:bg-white/5">Clear</button>
                     </div>
                   </div>
-                  <h4 className="text-white font-black text-sm uppercase mb-2">Priority Speed Up <Lock size={12} className="inline ml-1 mb-1" /></h4>
-                  <p className="text-slate-500 text-[10px] font-bold leading-relaxed uppercase">Pindahkan pelanggan Top 5 ke profil speed lebih tinggi secara otomatis.</p>
-                </div>
 
-                {/* Rule Item 3 */}
-                <div
-                  onClick={() => setRewardSettings(p => ({ ...p, happyHour: !p.happyHour }))}
-                  className={`p-6 border rounded-3xl group transition-all cursor-pointer ${rewardSettings.happyHour ? 'bg-amber-900/10 border-amber-500/30' : 'bg-[#151D2F] border-white/[0.05] hover:border-slate-500/30'}`}
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <div className={`p-3 rounded-2xl ${rewardSettings.happyHour ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-500'}`}>
-                      <Calendar size={24} />
-                    </div>
-                    <div className={`flex h-6 w-11 items-center rounded-full p-1 transition-colors ${rewardSettings.happyHour ? 'bg-amber-600/30' : 'bg-slate-800'}`}>
-                      <div className={`h-4 w-4 rounded-full shadow-sm transition-transform ${rewardSettings.happyHour ? 'bg-amber-500 translate-x-5' : 'bg-slate-500'}`} />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {vouchers.map(v => (
+                      <div
+                        key={v.code}
+                        onClick={() => handleTogglePrintSelection(v.code)}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all flex items-center gap-4 ${printSelection.includes(v.code) ? 'bg-blue-600/10 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative' : 'bg-[#1A233A] border-[#2A344D] hover:border-slate-500 hover:bg-[#2A344D]'}`}
+                      >
+                        {printSelection.includes(v.code) && (
+                          <div className="absolute top-2 right-2 text-blue-400 rounded-full bg-[#1A233A]">
+                            <CheckCircle size={16} className="fill-blue-500 text-white" />
+                          </div>
+                        )}
+                        <div className="p-1.5 bg-white rounded-lg shrink-0">
+                          <QRCodeSVG value={v.magicLink || v.code} size={40} />
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                          <h4 className="font-mono text-white font-bold text-sm tracking-wider truncate">{v.code}</h4>
+                          <div className="flex justify-between items-center mt-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">{v.pack}</span>
+                            <span className="text-xs text-emerald-400 font-medium">{v.price}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {vouchers.length === 0 && (
+                      <div className="col-span-full py-12 text-center text-slate-500 border border-dashed border-[#26314A] rounded-xl flex flex-col items-center gap-3">
+                        <Ticket size={32} className="opacity-50" />
+                        <p>Tidak ada voucher yang tersedia untuk dicetak.</p>
+                      </div>
+                    )}
                   </div>
-                  <h4 className="text-white font-black text-sm uppercase mb-2">Happy Hour Discount</h4>
-                  <p className="text-slate-500 text-[10px] font-bold leading-relaxed uppercase">Diskon otomatis untuk pembelian di jam sepi (21:00 - 06:00).</p>
                 </div>
 
-                {/* Rule Item 4 (Advanced Feature - Locked) */}
-                <div
-                  className="p-6 bg-[#151D2F] border border-white/[0.05] rounded-3xl opacity-50 grayscale cursor-not-allowed"
-                  onClick={() => alert('Fitur ini eksklusif untuk lisensi Enterprise.')}
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400">
-                      <Bell size={24} />
-                    </div>
-                    <div className="flex h-6 w-11 items-center rounded-full bg-slate-800 p-1">
-                      <div className="h-4 w-4 rounded-full bg-slate-600 shadow-sm" />
-                    </div>
-                  </div>
-                  <h4 className="text-white font-black text-sm uppercase mb-2">Broadcast Promo <Lock size={12} className="inline ml-1 mb-1" /></h4>
-                  <p className="text-slate-500 text-[10px] font-bold leading-relaxed uppercase">Kirim notifikasi promo khusus ke pelanggan yang belum kembali {">"} 7 hari.</p>
+                <div className="p-6 border-t border-[#26314A] bg-[#1A233A]/80 flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowPrintModal(false)}
+                    className="px-5 py-2.5 rounded-xl font-bold text-slate-300 hover:bg-white/5 border border-transparent hover:border-[#26314A] transition-all"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handlePrintSelected}
+                    disabled={printSelection.length === 0}
+                    className={`px-6 py-2.5 rounded-xl font-bold text-white flex items-center gap-2 shadow-lg transition-all ${printSelection.length > 0 ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/30' : 'bg-slate-700 text-slate-400 cursor-not-allowed hidden'}`}
+                  >
+                    <Printer size={18} /> Print {printSelection.length} Voucher
+                  </button>
                 </div>
-              </div>
-
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setShowRewardModal(false)}
-                  className="w-1/3 py-4 bg-white/5 border border-white/10 rounded-2xl font-black text-[10px] text-white uppercase tracking-widest hover:bg-white/10 transition-all"
-                >
-                  Tutup
-                </button>
-                <button
-                  onClick={() => { alert('Strategi Reward Berhasil Disimpan!'); setShowRewardModal(false); }}
-                  className="w-2/3 py-4 bg-blue-600 rounded-2xl font-black text-[10px] text-white uppercase tracking-widest hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/20"
-                >
-                  Simpan Strategi
-                </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          )
+        }
 
-      {/* PRINT-ONLY CSS SECTION (HIDDEN ON SCREEN, VISIBLE ON PRINT) */}
-      <style dangerouslySetInnerHTML={{
-        __html: `
+        {/* REWARD RULES MODAL */}
+        {
+          showRewardModal && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+              <div className="bg-[#0D1526] border border-white/10 rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl relative">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 via-cyan-400 to-blue-600" />
+
+                <div className="p-8 lg:p-10">
+                  <div className="flex justify-between items-start mb-10">
+                    <div>
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                          <Zap size={20} className="text-blue-400" />
+                        </div>
+                        <h2 className="text-3xl font-black text-white tracking-tight">Reward Strategy</h2>
+                      </div>
+                      <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Konfigurasi otomatisasi loyalitas pelanggan</p>
+                    </div>
+                    <button
+                      onClick={() => setShowRewardModal(false)}
+                      className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-slate-500 hover:text-white transition-all"
+                    >
+                      <XCircle size={24} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                    {/* Rule Item 1 */}
+                    <div
+                      onClick={() => setRewardSettings(p => ({ ...p, buy10Get1: !p.buy10Get1 }))}
+                      className={`p-6 border rounded-3xl group transition-all cursor-pointer ${rewardSettings.buy10Get1 ? 'bg-blue-900/10 border-blue-500/30' : 'bg-[#151D2F] border-white/[0.05] hover:border-slate-500/30'}`}
+                    >
+                      <div className="flex justify-between items-start mb-6">
+                        <div className={`p-3 rounded-2xl ${rewardSettings.buy10Get1 ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-500'}`}>
+                          <Ticket size={24} />
+                        </div>
+                        <div className={`flex h-6 w-11 items-center rounded-full p-1 transition-colors ${rewardSettings.buy10Get1 ? 'bg-blue-600/30' : 'bg-slate-800'}`}>
+                          <div className={`h-4 w-4 rounded-full shadow-sm transition-transform ${rewardSettings.buy10Get1 ? 'bg-blue-500 translate-x-5' : 'bg-slate-500'}`} />
+                        </div>
+                      </div>
+                      <h4 className="text-white font-black text-sm uppercase mb-2">Buy 10 Get 1 Free</h4>
+                      <p className="text-slate-500 text-[10px] font-bold leading-relaxed uppercase">Otomatis kirim voucher bonus setelah 10 kali transaksi terdeteksi di POS.</p>
+                    </div>
+
+                    {/* Rule Item 2 (Advanced Feature - Locked) */}
+                    <div
+                      className="p-6 bg-[#151D2F] border border-white/[0.05] rounded-3xl opacity-50 grayscale cursor-not-allowed"
+                      onClick={() => alert('Fitur ini eksklusif untuk lisensi Enterprise.')}
+                    >
+                      <div className="flex justify-between items-start mb-6">
+                        <div className="p-3 bg-emerald-500/10 rounded-2xl text-emerald-400">
+                          <ArrowUpRight size={24} />
+                        </div>
+                        <div className="flex h-6 w-11 items-center rounded-full bg-slate-800 p-1">
+                          <div className="h-4 w-4 rounded-full bg-slate-600 shadow-sm" />
+                        </div>
+                      </div>
+                      <h4 className="text-white font-black text-sm uppercase mb-2">Priority Speed Up <Lock size={12} className="inline ml-1 mb-1" /></h4>
+                      <p className="text-slate-500 text-[10px] font-bold leading-relaxed uppercase">Pindahkan pelanggan Top 5 ke profil speed lebih tinggi secara otomatis.</p>
+                    </div>
+
+                    {/* Rule Item 3 */}
+                    <div
+                      onClick={() => setRewardSettings(p => ({ ...p, happyHour: !p.happyHour }))}
+                      className={`p-6 border rounded-3xl group transition-all cursor-pointer ${rewardSettings.happyHour ? 'bg-amber-900/10 border-amber-500/30' : 'bg-[#151D2F] border-white/[0.05] hover:border-slate-500/30'}`}
+                    >
+                      <div className="flex justify-between items-start mb-6">
+                        <div className={`p-3 rounded-2xl ${rewardSettings.happyHour ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-500'}`}>
+                          <Calendar size={24} />
+                        </div>
+                        <div className={`flex h-6 w-11 items-center rounded-full p-1 transition-colors ${rewardSettings.happyHour ? 'bg-amber-600/30' : 'bg-slate-800'}`}>
+                          <div className={`h-4 w-4 rounded-full shadow-sm transition-transform ${rewardSettings.happyHour ? 'bg-amber-500 translate-x-5' : 'bg-slate-500'}`} />
+                        </div>
+                      </div>
+                      <h4 className="text-white font-black text-sm uppercase mb-2">Happy Hour Discount</h4>
+                      <p className="text-slate-500 text-[10px] font-bold leading-relaxed uppercase">Diskon otomatis untuk pembelian di jam sepi (21:00 - 06:00).</p>
+                    </div>
+
+                    {/* Rule Item 4 (Advanced Feature - Locked) */}
+                    <div
+                      className="p-6 bg-[#151D2F] border border-white/[0.05] rounded-3xl opacity-50 grayscale cursor-not-allowed"
+                      onClick={() => alert('Fitur ini eksklusif untuk lisensi Enterprise.')}
+                    >
+                      <div className="flex justify-between items-start mb-6">
+                        <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400">
+                          <Bell size={24} />
+                        </div>
+                        <div className="flex h-6 w-11 items-center rounded-full bg-slate-800 p-1">
+                          <div className="h-4 w-4 rounded-full bg-slate-600 shadow-sm" />
+                        </div>
+                      </div>
+                      <h4 className="text-white font-black text-sm uppercase mb-2">Broadcast Promo <Lock size={12} className="inline ml-1 mb-1" /></h4>
+                      <p className="text-slate-500 text-[10px] font-bold leading-relaxed uppercase">Kirim notifikasi promo khusus ke pelanggan yang belum kembali {">"} 7 hari.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setShowRewardModal(false)}
+                      className="w-1/3 py-4 bg-white/5 border border-white/10 rounded-2xl font-black text-[10px] text-white uppercase tracking-widest hover:bg-white/10 transition-all"
+                    >
+                      Tutup
+                    </button>
+                    <button
+                      onClick={() => { alert('Strategi Reward Berhasil Disimpan!'); setShowRewardModal(false); }}
+                      className="w-2/3 py-4 bg-blue-600 rounded-2xl font-black text-[10px] text-white uppercase tracking-widest hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/20"
+                    >
+                      Simpan Strategi
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {/* PRINT-ONLY CSS SECTION (HIDDEN ON SCREEN, VISIBLE ON PRINT) */}
+        <style dangerouslySetInnerHTML={{
+          __html: `
         @media print {
-          /* Ensure root containers are visible */
-          body, #root { display: block !important; visibility: visible !important; background: white !important; }
-          /* Hide everything inside the main dashboard wrapper */
-          body > *:not(#root) { display: none !important; }
-          #root > * { display: none !important; }
-          #root > div > header,
-          #root > div > div,
-          #root > div > footer,
-          #root > div > style { display: none !important; }
-          /* Show the print container */
+          /* Sembunyikan semua elemen UI Dashboard */
+          body * { visibility: hidden !important; }
+          
+          /* Tampilkan hanya kontainer print dan isinya */
+          .print-container, .print-container * { 
+            visibility: visible !important; 
+          }
+          
           .print-container {
             display: grid !important;
-            visibility: visible !important;
             grid-template-columns: repeat(2, 1fr) !important;
-            gap: 20px !important;
-            padding: 20px !important;
-            background: white !important;
-            width: 100% !important;
-            height: auto !important;
-            position: fixed !important;
-            top: 0 !important;
+            gap: 15px !important;
+            padding: 0 !important;
+            position: absolute !important;
             left: 0 !important;
-            z-index: 99999 !important;
+            top: 0 !important;
+            width: 100% !important;
+            background: white !important;
           }
-          .print-card {
-            border: 2px dashed #cbd5e1 !important;
-            padding: 16px !important;
+
+          body { background: white !important; }
+          .voucher-premium {
+            width: 100% !important;
+            height: 140px !important;
+            background: #fff !important;
+            border: 2px solid #1e293b !important;
             border-radius: 12px !important;
+            position: relative !important;
+            overflow: hidden !important;
+            display: flex !important;
+            page-break-inside: avoid !important;
+          }
+          .voucher-left {
+            width: 30% !important;
+            background: #1e293b !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 10px !important;
+            color: white !important;
+          }
+          .voucher-right {
+            flex: 1 !important;
+            padding: 12px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+          }
+          .voucher-brand { 
+            font-size: 14px !important; 
+            font-weight: 900 !important; 
+            color: #1e293b !important;
+            letter-spacing: -0.5px !important;
             display: flex !important;
             align-items: center !important;
-            gap: 16px !important;
-            page-break-inside: avoid !important;
-            color: black !important;
-            background: white !important;
+            gap: 4px !important;
           }
-          .print-qr svg {
-            width: 80px !important;
-            height: 80px !important;
+          .voucher-code {
+            font-family: 'Courier New', monospace !important;
+            font-size: 24px !important;
+            font-weight: 900 !important;
+            color: #000 !important;
+            background: #f1f5f9 !important;
+            padding: 4px 10px !important;
+            border-radius: 6px !important;
+            margin: 6px 0 !important;
+            display: inline-block !important;
+            letter-spacing: 2px !important;
           }
+          .voucher-info-row {
+            display: flex !important;
+            gap: 10px !important;
+            margin-top: 4px !important;
+          }
+          .info-box {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            padding: 4px 8px !important;
+            border-radius: 4px !important;
+            flex: 1 !important;
+          }
+          .info-label { font-size: 8px !important; color: #64748b !important; text-transform: uppercase !important; font-weight: 700 !important; }
+          .info-value { font-size: 11px !important; font-weight: 800 !important; color: #1e293b !important; }
           .print-hidden { display: none !important; }
-          @page { margin: 1cm; size: auto; }
+          @page { margin: 10mm; size: A4; }
         }
       `}} />
 
-      {/* ACTUAL PRINT-ONLY RENDER */}
-      <div className="hidden print-container w-full min-h-screen bg-white text-black">
-        {vouchers.filter(v => printSelection.includes(v.code)).map(v => (
-          <div key={`print-${v.code}`} className="print-card w-full mb-4">
-            <div className="print-qr p-2 bg-white rounded-lg border border-slate-200 shadow-sm shrink-0">
-              <QRCodeSVG value={v.magicLink || v.code} size={80} viewBox="0 0 80 80" />
-            </div>
-            <div className="flex-1 ml-4 min-w-0">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Wi-Fi Access Voucher</p>
-              <h2 className="text-2xl font-black font-mono tracking-widest mb-2 whitespace-nowrap overflow-hidden text-ellipsis">{v.code}</h2>
-              <div className="flex gap-3">
-                <div className="bg-slate-100 px-3 py-1 rounded border border-slate-200">
-                  <span className="text-xs text-slate-500 font-medium block leading-none">Package</span>
-                  <span className="text-sm font-bold text-slate-800 leading-tight">{v.pack}</span>
+        {/* CUSTOMER DETAIL MODAL */}
+        {showCustomerModal && selectedCustomer && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
+            <div className="absolute inset-0 bg-[#070D1A]/90 backdrop-blur-md" onClick={() => setShowCustomerModal(false)} />
+            <div className="relative bg-[#151D2F] border border-[#26314A]/60 rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+              <div className="p-8 border-b border-white/[0.05] flex justify-between items-center bg-[#1A233A]/50">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-600/20 flex items-center justify-center border border-white/10 ring-1 ring-white/5">
+                    <Users size={24} className="text-blue-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black text-white tracking-tight leading-none uppercase">{selectedCustomer.name}</h2>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1.5 flex items-center gap-2">
+                      <CheckCircle size={10} className="text-emerald-400" />
+                      Verified Customer Data
+                    </p>
+                  </div>
                 </div>
-                <div className="bg-slate-100 px-3 py-1 rounded border border-slate-200">
-                  <span className="text-xs text-slate-500 font-medium block leading-none">Price</span>
-                  <span className="text-sm font-bold text-slate-800 leading-tight">{v.price}</span>
+                <button
+                  onClick={() => setShowCustomerModal(false)}
+                  className="w-10 h-10 rounded-xl bg-white/5 hover:bg-red-500/20 text-slate-400 hover:text-red-400 flex items-center justify-center transition-all border border-transparent hover:border-red-500/30"
+                >
+                  <XCircle size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                {/* Stats Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-[#0A111E]/50 border border-white/5 rounded-2xl p-6 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-blue-500/5 group-hover:bg-blue-500/10 transition-colors" />
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-3 relative z-10">Total Transaksi</p>
+                    <p className="text-3xl font-black text-blue-400 relative z-10">{selectedCustomer.userVouchers.length}</p>
+                  </div>
+                  <div className="bg-[#0A111E]/50 border border-white/5 rounded-2xl p-6 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-emerald-500/5 group-hover:bg-emerald-500/10 transition-colors" />
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-3 relative z-10">Total Belanja</p>
+                    <p className="text-3xl font-black text-emerald-400 relative z-10">
+                      Rp {selectedCustomer.userVouchers.reduce((acc, v) => acc + (parseInt(v.price.replace(/[^\d]/g, '')) || 0), 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-[#0A111E]/50 border border-white/5 rounded-2xl p-6 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-indigo-500/5 group-hover:bg-indigo-500/10 transition-colors" />
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-3 relative z-10">Status Keaktifan</p>
+                    <p className="text-lg font-black text-indigo-400 uppercase tracking-widest relative z-10">Loyal</p>
+                  </div>
+                </div>
+
+                {/* History Table */}
+                <div>
+                  <h3 className="text-lg font-black text-white tracking-tight mb-4 flex items-center gap-2">
+                    <Activity size={16} className="text-blue-500" />
+                    Riwayat Pembelian
+                  </h3>
+                  <div className="bg-[#0A111E]/50 border border-white/5 rounded-2xl overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-white/[0.02] border-b border-white/[0.05] text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          <th className="px-6 py-4">Voucher Code</th>
+                          <th className="px-6 py-4">Packet Date</th>
+                          <th className="px-6 py-4">Package/Limit</th>
+                          <th className="px-6 py-4">Nominal</th>
+                          <th className="px-6 py-4">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.02] text-xs">
+                        {selectedCustomer.vouchers.map((v, idx) => (
+                          <tr key={idx} className="hover:bg-white/[0.015] transition-colors">
+                            <td className="px-6 py-4">
+                              <span className="font-mono text-white bg-white/5 px-2 py-1 rounded select-all">{v.code}</span>
+                            </td>
+                            <td className="px-6 py-4 text-slate-400">
+                              {v.date ? new Date(v.date).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown'}
+                            </td>
+                            <td className="px-6 py-4">
+                              <p className="text-white font-bold">{v.pack}</p>
+                              <p className="text-[9px] text-slate-500 font-mono mt-0.5">{v.rateLimit || 'Default'}</p>
+                            </td>
+                            <td className="px-6 py-4 font-black text-emerald-400">
+                              {v.price}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-widest ${v.status === 'Active' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                                v.status === 'Used' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                                  'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                                }`}>
+                                {v.status || 'Active'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 mt-3 font-medium">Scan QR to Auto-Login or input Code above.</p>
+
+              <div className="p-6 border-t border-white/[0.05] bg-black/20 flex justify-end">
+                <button
+                  onClick={() => setShowCustomerModal(false)}
+                  className="px-6 py-2.5 rounded-xl font-black text-[10px] text-white bg-white/10 hover:bg-white/20 uppercase tracking-widest transition-all"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
-        ))}
-      </div>
-      {/* STATUS BAR FOOTER */}
-      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-[#0D1526]/80 backdrop-blur-2xl border-t border-white/[0.05] px-6 py-2">
-        <div className="max-w-[1500px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Router Online</span>
+        )}
+
+        {/* ACTUAL PRINT-ONLY RENDER */}
+        <div className="hidden print-container w-full min-h-screen bg-white">
+          {(printSelection.length > 0 ? vouchers.filter(v => printSelection.includes(v.code)) : (selectedVoucher ? [selectedVoucher] : [])).map((v, idx) => (
+            <div key={idx} className="voucher-premium">
+              <div className="voucher-left">
+                <div className="bg-white p-1 rounded-lg">
+                  <QRCodeSVG value={v.magicLink || v.code} size={65} />
+                </div>
+                <p className="text-[6px] font-bold mt-2 opacity-70">SCAN UNTUK LOGIN</p>
+              </div>
+              <div className="voucher-right">
+                <div className="flex justify-between items-start">
+                  <div className="voucher-brand">
+                    <Wifi size={14} className="text-blue-600" />
+                    <span>NetVocher Access</span>
+                  </div>
+                  <div className="text-[7px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                    PREMIUM ACCESS
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <span className="voucher-code">{v.code}</span>
+                </div>
+
+                <div className="voucher-info-row">
+                  <div className="info-box">
+                    <p className="info-label">Paket Durasi</p>
+                    <p className="info-value">{v.pack}</p>
+                  </div>
+                  <div className="info-box">
+                    <p className="info-label">Harga Voucher</p>
+                    <p className="info-value">{v.price}</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center mt-2 border-t pt-2 border-dashed border-slate-200">
+                  <p className="text-[7px] text-slate-400 italic">Terima kasih atas kunjungan Anda!</p>
+                  <p className="text-[8px] font-black text-slate-800">Support: 0812-3456-7890</p>
+                </div>
+              </div>
             </div>
-            <div className="hidden md:flex items-center gap-2 border-l border-white/5 pl-6">
-              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">MikroTik IP:</span>
-              <span className="text-[9px] font-black text-blue-400 tracking-wider font-mono">{mtConfig.ip || 'Not Configured'}</span>
-            </div>
-            <div className="hidden lg:flex items-center gap-2 border-l border-white/5 pl-6">
-              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Last Sync:</span>
-              <span className="text-[9px] font-black text-white tracking-widest uppercase">{lastSync}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
-              <span className="text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">NetVocher v3.0.4 Premium</span>
-            </div>
-          </div>
+          ))}
         </div>
-      </footer>
-    </div>
+        {/* STATUS BAR FOOTER */}
+        <footer className="fixed bottom-0 left-0 md:left-64 right-0 z-40 bg-[#0D1526]/80 backdrop-blur-2xl border-t border-white/[0.05] px-6 py-2">
+          <div className="max-w-[1500px] mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Router Online</span>
+              </div>
+              <div className="hidden md:flex items-center gap-2 border-l border-white/5 pl-6">
+                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">MikroTik IP:</span>
+                <span className="text-[9px] font-black text-blue-400 tracking-wider font-mono">{mtConfig.ip || 'Not Configured'}</span>
+              </div>
+              <div className="hidden lg:flex items-center gap-2 border-l border-white/5 pl-6">
+                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Last Sync:</span>
+                <span className="text-[9px] font-black text-white tracking-widest uppercase">{lastSync}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
+                <span className="text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">NetVocher v3.0.4 Premium</span>
+              </div>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div >
   );
 }
+
+export default App;
