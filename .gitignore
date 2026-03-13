@@ -28,3 +28,11 @@ check_*.js
 *.json.bak
 server_err.log
 current_server.log
+config.json
+database/
+*.db
+.gemini/
+.agents/
+.agent/
+_agents/
+_agent/
